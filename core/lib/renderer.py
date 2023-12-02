@@ -11,7 +11,6 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 import nvdiffrast.torch as dr
-# import kaolin as kal
 from .network_utils import get_encoder
 
 from .obj import Mesh, safe_normalize

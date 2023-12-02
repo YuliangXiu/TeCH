@@ -146,7 +146,7 @@ class TestDataset:
         }
 
     def read_openpose_keypoints(self, kp_path, aff_path):
-        with open(kp_path, 'r') as f:
+        with open(kp_path, 'rb') as f:
             data = json.load(f)
         kps = torch.as_tensor(data['people'][0]['face_keypoints_2d'], dtype=torch.float32).reshape(-1, 3)
         aff = torch.as_tensor(np.load(aff_path), dtype=torch.float32)

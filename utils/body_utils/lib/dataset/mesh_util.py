@@ -676,7 +676,7 @@ def get_optim_grid_image(per_loop_lst, loss=None, nrow=4, type="smpl"):
         else:
             print(f"{type} should be 'smpl' or 'cloth'")
 
-    grid_img = grid_img.resize((grid_img.size[0], grid_img.size[1]), Image.ANTIALIAS)
+    grid_img = grid_img.resize((grid_img.size[0], grid_img.size[1]), Image.Resampling.LANCZOS)
 
     return grid_img
 

@@ -227,8 +227,8 @@ if __name__ == "__main__":
             )
 
             T_mask_F, T_mask_B = dataset.render.get_image(type="mask")
-            for k in in_tensor:
-                print(k, in_tensor[k].shape)
+            # for k in in_tensor:
+            #     print(k, in_tensor[k].shape)
             with torch.no_grad():
                 in_tensor["normal_F"], in_tensor["normal_B"] = normal_net.netG(in_tensor)
 
@@ -281,7 +281,7 @@ if __name__ == "__main__":
                 openpose_conf = data["openpose_keypoints"][:68, 2].to(device)
                 smpl_openpose_lmks = (get_openpose_face_landmarks(smpl_joints[0, :, :2]) + 1.0) * 0.5
                 ind = openpose_conf.max(dim=0)[1]
-                print(smpl_openpose_lmks[ind], openpose_lmks[ind])
+                # print(smpl_openpose_lmks[ind], openpose_lmks[ind])
                 # print(smpl_openpose_lmks.min(dim=0), smpl_openpose_lmks.max(dim=0))
                 # print(openpose_lmks.min(dim=0), openpose_lmks.max(dim=0))
                 losses["joint"]["value"] = losses["joint"]["value"] + (torch.norm(openpose_lmks - smpl_openpose_lmks, dim=1) *

@@ -35,7 +35,7 @@ def set_rasterizer(type="pytorch3d"):
                 f"{curr_dir}/rasterizer/standard_rasterize_cuda.cpp",
                 f"{curr_dir}/rasterizer/standard_rasterize_cuda_kernel.cu",
             ],
-            extra_cuda_cflags=["-std=c++14", "-ccbin=$$(which gcc-7)"],
+            extra_cuda_cflags=["-std=c++17", "-ccbin=$$(which gcc-7)"],
         )    # cuda10.2 is not compatible with gcc9. Specify gcc 7
         from standard_rasterize_cuda import standard_rasterize
 

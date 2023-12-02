@@ -1,9 +1,14 @@
 import replicate
-from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmentation
+from transformers import (
+    SegformerFeatureExtractor,
+    SegformerForSemanticSegmentation,
+    AutoProcessor,
+    BlipForQuestionAnswering,
+)
 import numpy as np
 from PIL import Image
 import argparse
-import os
+import torch
 
 mylabel2ids = {
     'hat': [1],
@@ -20,7 +25,6 @@ mylabel2ids = {
 }
 
 
-
 def is_necessary(g, garments):
     if 'dress' not in garments:
         if g == 'upper-clothes':
@@ -31,24 +35,49 @@ def is_necessary(g, garments):
             return True
     return False
 
+
 def get_prompt_segments(img_path, feature_extractor, model):
     image = open(img_path, 'rb')
+
     def ask(q):
         print('Question: {}'.format(q))
-        answer = replicate.run(
-            "salesforce/blip:2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746",
-            input={"image": image, 
-            "task": "visual_question_answering",
-            "question":q}
-        ).replace('Answer: ', '')
+
+        # answer = replicate.run(
+        #     "salesforce/blip:2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746",
+        #     input={
+        #         "image": image,
+        #         "task": "visual_question_answering",
+        #         "question": q
+        #     }).replace('Answer: ', '')
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        blip_model = BlipForQuestionAnswering.from_pretrained(
+            "Salesforce/blip-vqa-base")
+        blip_processor = AutoProcessor.from_pretrained(
+            "Salesforce/blip-vqa-base")
+        blip_model.to(device)
+
+        inputs = blip_processor(
+            images=[Image.open(img_path)],
+            text=q,
+            padding=True,
+            return_tensors="pt",
+        ).to(device, torch.float16)
+
+        generated_ids = blip_model.generate(**inputs, max_new_tokens=5)
+        answer = blip_processor.batch_decode(generated_ids,
+                                             skip_special_tokens=True)[0]
+
         print('Answer:', answer)
         return answer
+
     def clean_prompt(prompt):
         while ('  ' in prompt):
             prompt = prompt.replace('  ', ' ')
         while (' ,' in prompt):
             prompt = prompt.replace(' ,', ',')
         return prompt
+
     gender = ask('Is this person a man or a woman')
     if 'woman' in gender:
         gender = 'woman'
@@ -63,7 +92,8 @@ def get_prompt_segments(img_path, feature_extractor, model):
     face = ask('Describe the facial appearance of this person.')
     prompt = prompt + ', {} {} hair, {}'.format(haircolor, hairstyle, face)
     for g in garments:
-        has_g = is_necessary(g, garments) or ('yes' in ask('Is this person wearing {}?'.format(g)))
+        has_g = is_necessary(g, garments) or ('yes' in ask(
+            'Is this person wearing {}?'.format(g)))
         if has_g:
             kind = ask('What {} is the person wearing?'.format(g))
             if (g in kind) or (g == 'upper-clothes'):
@@ -90,7 +120,8 @@ def get_garments(img_path, feature_extractor, model):
     image = np.array(Image.open(img_path))
     alpha = image[..., 3:] > 250
     image = (image[..., :3] * alpha).astype(np.uint8)
-    inputs = feature_extractor(images=image, return_tensors="pt").to(model.device)
+    inputs = feature_extractor(images=image,
+                               return_tensors="pt").to(model.device)
     outputs = model(**inputs)
     image = np.array(Image.open(img_path).resize((128, 128)))
     alpha = image[..., 3:] > 250
@@ -112,13 +143,22 @@ def get_garments(img_path, feature_extractor, model):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--img-path', type=str, required=True, help="input image")
-    parser.add_argument('--out-path', type=str, required=True, help="output path")
+    parser.add_argument('--img-path',
+                        type=str,
+                        required=True,
+                        help="input image")
+    parser.add_argument('--out-path',
+                        type=str,
+                        required=True,
+                        help="output path")
     opt = parser.parse_args()
     print(f'[INFO] Generating text prompt for {opt.img_path}...')
-    model = SegformerForSemanticSegmentation.from_pretrained("matei-dorian/segformer-b5-finetuned-human-parsing").cuda()
-    feature_extractor = SegformerFeatureExtractor.from_pretrained("matei-dorian/segformer-b5-finetuned-human-parsing")
-    prompt, gender = get_prompt_segments(opt.img_path, feature_extractor, model)
+    model = SegformerForSemanticSegmentation.from_pretrained(
+        "matei-dorian/segformer-b5-finetuned-human-parsing").cuda()
+    feature_extractor = SegformerFeatureExtractor.from_pretrained(
+        "matei-dorian/segformer-b5-finetuned-human-parsing")
+    prompt, gender = get_prompt_segments(opt.img_path, feature_extractor,
+                                         model)
     print(f'[INFO] generated prompt: {prompt}, estimated category: {gender}')
     with open(opt.out_path, 'w') as f:
         f.write(f'{prompt}|{gender}')

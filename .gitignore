@@ -1,6 +1,6 @@
 __pycache__
 data/*
-exp/demo/*
+exp/*
 openai
 *.o
 *.so
@@ -13,8 +13,7 @@ core/lib/gridencoder/dist
 logs
 *.pt
 *.pth
-thirdparties/MODNet
-thirdparties/clip
 clip_ckpts
+results
 input_data/demo/*
 .DS_Store
