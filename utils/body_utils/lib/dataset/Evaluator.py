@@ -14,25 +14,26 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from lib.dataset.mesh_util import projection
+import copy
+from typing import Tuple
+
+import cv2
+import numpy as np
+import skimage
+import torch
 from lib.common.render import Render
 from lib.common.render_pyrender import PyRender
-import numpy as np
-import torch
-from torchvision.utils import make_grid
-from pytorch3d import _C
-from torch.autograd import Function
-from torch.autograd.function import once_differentiable
-from pytorch3d.structures import Pointclouds
+from lib.dataset.mesh_util import projection
 from PIL import Image
-import skimage
-from thirdparties.lpips import LPIPS
-import cv2
-
-from typing import Tuple
+from pytorch3d import _C
 from pytorch3d.ops.mesh_face_areas_normals import mesh_face_areas_normals
 from pytorch3d.ops.packed_to_padded import packed_to_padded
-import copy
+from pytorch3d.structures import Pointclouds
+from torch.autograd import Function
+from torch.autograd.function import once_differentiable
+from torchvision.utils import make_grid
+
+from thirdparties.lpips import LPIPS
 
 _DEFAULT_MIN_TRIANGLE_AREA: float = 5e-3
 
@@ -242,7 +243,7 @@ class Evaluator:
         self.render_py = PyRender(size=512, device=device)
         self.device = device
         self.lpips_model = LPIPS(net='vgg').to(device)
-    
+
     @staticmethod
     def psnr_metric(img_pred, img_gt):
         mse = np.mean((img_pred - img_gt)**2)
@@ -254,22 +255,30 @@ class Evaluator:
         return image_tensor * 2. - 1.
 
     def get_lpips_loss(self, rgb, target):
-        lpips_loss = self.lpips_model(self.scale_for_lpips(rgb.permute(0, 3, 1, 2).cuda()), 
-                        self.scale_for_lpips(target.permute(0, 3, 1, 2).cuda()))
+        lpips_loss = self.lpips_model(
+            self.scale_for_lpips(rgb.permute(0, 3, 1, 2).cuda()),
+            self.scale_for_lpips(target.permute(0, 3, 1, 2).cuda())
+        )
         return torch.mean(lpips_loss).cpu().detach().numpy()
-    
+
     def cal_render_metrics(self, pred, gt, mask=None):
         if mask is not None:
             psnr = self.psnr_metric(pred[mask], gt[mask])
-            x, y, w, h = cv2.boundingRect(mask.reshape(gt.shape[:2]).astype(np.uint8)*255)
+            x, y, w, h = cv2.boundingRect(mask.reshape(gt.shape[:2]).astype(np.uint8) * 255)
             pred = pred[y:y + h, x:x + w]
             gt = gt[y:y + h, x:x + w]
             ssim = skimage.metrics.structural_similarity(pred, gt, multichannel=True)
-            lpips = self.get_lpips_loss(rgb=torch.from_numpy(pred).float().unsqueeze(0), target=torch.from_numpy(gt).float().unsqueeze(0))
+            lpips = self.get_lpips_loss(
+                rgb=torch.from_numpy(pred).float().unsqueeze(0),
+                target=torch.from_numpy(gt).float().unsqueeze(0)
+            )
         else:
             psnr = self.psnr_metric(pred, gt)
             ssim = skimage.metrics.structural_similarity(pred, gt, multichannel=True)
-            lpips = self.get_lpips_loss(rgb=torch.from_numpy(pred).float().unsqueeze(0), target=torch.from_numpy(gt).float().unsqueeze(0))
+            lpips = self.get_lpips_loss(
+                rgb=torch.from_numpy(pred).float().unsqueeze(0),
+                target=torch.from_numpy(gt).float().unsqueeze(0)
+            )
         return psnr, ssim, lpips
 
     def set_mesh(self, result_dict, scale=True):
@@ -331,35 +340,45 @@ class Evaluator:
 
         # error_hf = ((((src_normal_arr - tgt_normal_arr) * sim_mask)**2).sum(dim=0).mean()) * 4.0
 
-        normal_img = Image.fromarray(
-            (
-                torch.cat([torch.cat([src_normal_arr, src_mask.float()], axis=0), torch.cat([tgt_normal_arr, tgt_mask.float()], axis=0)],
-                          dim=1).permute(1, 2, 0).detach().cpu().numpy() * 255.0
-            ).astype(np.uint8)
-        )
+        normal_img = Image.fromarray((
+            torch.cat([
+                torch.cat([src_normal_arr, src_mask.float()], axis=0),
+                torch.cat([tgt_normal_arr, tgt_mask.float()], axis=0)
+            ],
+                      dim=1).permute(1, 2, 0).detach().cpu().numpy() * 255.0
+        ).astype(np.uint8))
         normal_img.save(normal_path)
         psnr, ssim, lpips = 0., 0., 0.
         for i in range(4):
-            src_normal_rgb_i = src_normal_arr[..., 512*i:512*(i+1)].permute(1, 2, 0).detach().cpu().numpy()
-            tgt_normal_rgb_i = tgt_normal_arr[..., 512*i:512*(i+1)].permute(1, 2, 0).detach().cpu().numpy()
-            mask_i = mask[..., 512*i:512*(i+1)]
+            src_normal_rgb_i = src_normal_arr[..., 512 * i:512 *
+                                              (i + 1)].permute(1, 2, 0).detach().cpu().numpy()
+            tgt_normal_rgb_i = tgt_normal_arr[..., 512 * i:512 *
+                                              (i + 1)].permute(1, 2, 0).detach().cpu().numpy()
+            mask_i = mask[..., 512 * i:512 * (i + 1)]
             psnr_i, ssim_i, lpips_i = self.cal_render_metrics(src_normal_rgb_i, tgt_normal_rgb_i)
             psnr += psnr_i
             ssim += ssim_i
             lpips += lpips_i
 
-        return error, psnr/4, ssim/4, lpips/4
+        return error, psnr / 4, ssim / 4, lpips / 4
 
     def calculate_render_consist_cape(self, render_path):
-        from lib.dataset.mesh_util import projection_inv, projection
-        images_gt = [(img*0.5 + 0.5).clamp(0., 1.).reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for img in self.side_images_gt]
-        masks_gt = [mask.clamp(0., 1.).reshape(512, 512).cpu().numpy() for mask in self.side_masks_gt]
+        from lib.dataset.mesh_util import projection, projection_inv
+        images_gt = [
+            (img * 0.5 + 0.5).clamp(0., 1.).reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() *
+            255 for img in self.side_images_gt
+        ]
+        masks_gt = [
+            mask.clamp(0., 1.).reshape(512, 512).cpu().numpy() for mask in self.side_masks_gt
+        ]
         images_gt = [image * mask[..., None] for image, mask in zip(images_gt, masks_gt)]
         images_pr, masks_pr = [], []
         for i in range(3):
             if self.verts_color_pr is None:
                 mesh = copy.deepcopy(self.trimesh_pr)
-                mesh.vertices = projection(projection_inv(mesh.vertices, self.side_calibs[0]), self.side_calibs[i]).cpu().numpy()
+                mesh.vertices = projection(
+                    projection_inv(mesh.vertices, self.side_calibs[0]), self.side_calibs[i]
+                ).cpu().numpy()
                 self.render_py.load_meshes(mesh)
                 image_pr, mask_pr = self.render_py.get_image("front")
                 image_pr[0] = image_pr[0] * (mask_pr[0][..., None])
@@ -367,19 +386,27 @@ class Evaluator:
                 masks_pr += mask_pr
             else:
                 print('use vertex colors!')
-                verts_pr = projection(projection_inv(self.verts_pr, self.side_calibs[0]), self.side_calibs[i])
+                verts_pr = projection(
+                    projection_inv(self.verts_pr, self.side_calibs[0]), self.side_calibs[i]
+                )
                 self.render.load_meshes(verts_pr.numpy(), self.faces_pr)
-                image_pr = self.render.get_image(cam_type="front", bg="black", vertex_colors=self.verts_color_pr)
-                image_pr = [image_pr[i].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for i in range(1)]
+                image_pr = self.render.get_image(
+                    cam_type="front", bg="black", vertex_colors=self.verts_color_pr
+                )
+                image_pr = [
+                    image_pr[i].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255
+                    for i in range(1)
+                ]
                 mask_pr = [np.ones_like(image_pr[i][..., 0]) for i in range(1)]
                 images_pr += image_pr
                 masks_pr += mask_pr
-        
+
         rgb_img = Image.fromarray(
             np.concatenate([
-                        np.stack(images_pr, axis=1).reshape([512, 512*3, 3]).astype(np.uint8), 
-                        np.stack(images_gt, axis=1).reshape([512, 512*3, 3]).astype(np.uint8), 
-            ], axis=0)
+                np.stack(images_pr, axis=1).reshape([512, 512 * 3, 3]).astype(np.uint8),
+                np.stack(images_gt, axis=1).reshape([512, 512 * 3, 3]).astype(np.uint8),
+            ],
+                           axis=0)
         )
         rgb_img.save(render_path)
         psnr, ssim, lpips = [], [], []
@@ -390,7 +417,9 @@ class Evaluator:
             psnr_i, ssim_i, lpips_i = self.cal_render_metrics(src_rgb_i, tgt_rgb_i)
             vis = src_rgb_i * 0.5 + tgt_rgb_i * 0.5
             vis_img = Image.fromarray(
-                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1)*255).astype(np.uint8)
+                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1) * 255).astype(
+                    np.uint8
+                )
             )
             #vis_img.save(render_path.replace('.png', f'_{i}.png'))
             print(psnr_i, ssim_i, lpips_i)
@@ -399,18 +428,24 @@ class Evaluator:
             lpips += [lpips_i]
 
         return psnr, ssim, lpips
-
 
     def calculate_render_consist_thuman(self, render_path):
-        from lib.dataset.mesh_util import projection_inv, projection
-        images_gt = [(img*0.5 + 0.5).clamp(0., 1.).reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for img in self.side_images_gt]
-        masks_gt = [mask.clamp(0., 1.).reshape(512, 512).cpu().numpy() for mask in self.side_masks_gt]
+        from lib.dataset.mesh_util import projection, projection_inv
+        images_gt = [
+            (img * 0.5 + 0.5).clamp(0., 1.).reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() *
+            255 for img in self.side_images_gt
+        ]
+        masks_gt = [
+            mask.clamp(0., 1.).reshape(512, 512).cpu().numpy() for mask in self.side_masks_gt
+        ]
         images_gt = [image * mask[..., None] for image, mask in zip(images_gt, masks_gt)]
         images_pr, masks_pr = [], []
         for i in range(4):
             if self.verts_color_pr is None:
                 mesh = copy.deepcopy(self.trimesh_pr)
-                mesh.vertices = projection(projection_inv(mesh.vertices, self.side_calibs[0]), self.side_calibs[i]).cpu().numpy()
+                mesh.vertices = projection(
+                    projection_inv(mesh.vertices, self.side_calibs[0]), self.side_calibs[i]
+                ).cpu().numpy()
                 self.render_py.load_meshes(mesh)
                 image_pr, mask_pr = self.render_py.get_image("front")
                 image_pr[0] = image_pr[0] * (mask_pr[0][..., None])
@@ -418,19 +453,27 @@ class Evaluator:
                 masks_pr += mask_pr
             else:
                 print('use vertex colors!')
-                verts_pr = projection(projection_inv(self.verts_pr, self.side_calibs[0]), self.side_calibs[i])
+                verts_pr = projection(
+                    projection_inv(self.verts_pr, self.side_calibs[0]), self.side_calibs[i]
+                )
                 self.render.load_meshes(verts_pr.numpy(), self.faces_pr)
-                image_pr = self.render.get_image(cam_type="front", bg="black", vertex_colors=self.verts_color_pr)
-                image_pr = [image_pr[i].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for i in range(1)]
+                image_pr = self.render.get_image(
+                    cam_type="front", bg="black", vertex_colors=self.verts_color_pr
+                )
+                image_pr = [
+                    image_pr[i].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255
+                    for i in range(1)
+                ]
                 mask_pr = [np.ones_like(image_pr[i][..., 0]) for i in range(1)]
                 images_pr += image_pr
                 masks_pr += mask_pr
-        
+
         rgb_img = Image.fromarray(
             np.concatenate([
-                        np.stack(images_pr, axis=1).reshape([512, 512*4, 3]).astype(np.uint8), 
-                        np.stack(images_gt, axis=1).reshape([512, 512*4, 3]).astype(np.uint8), 
-            ], axis=0)
+                np.stack(images_pr, axis=1).reshape([512, 512 * 4, 3]).astype(np.uint8),
+                np.stack(images_gt, axis=1).reshape([512, 512 * 4, 3]).astype(np.uint8),
+            ],
+                           axis=0)
         )
         rgb_img.save(render_path)
         psnr, ssim, lpips = [], [], []
@@ -441,7 +484,9 @@ class Evaluator:
             psnr_i, ssim_i, lpips_i = self.cal_render_metrics(src_rgb_i, tgt_rgb_i)
             vis = src_rgb_i * 0.5 + tgt_rgb_i * 0.5
             vis_img = Image.fromarray(
-                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1)*255).astype(np.uint8)
+                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1) * 255).astype(
+                    np.uint8
+                )
             )
             #vis_img.save(render_path.replace('.png', f'_{i}.png'))
             print(psnr_i, ssim_i, lpips_i)
@@ -450,7 +495,6 @@ class Evaluator:
             lpips += [lpips_i]
 
         return psnr, ssim, lpips
-
 
     def calculate_render_consist(self, render_path):
         if self.verts_color_gt is None:
@@ -459,8 +503,13 @@ class Evaluator:
         else:
             print('use vertex colors!')
             self.render.meshes = self.src_mesh
-            images_gt = self.render.get_image(cam_type="four", bg="black", vertex_colors=self.verts_color_gt)
-            images_gt = [images_gt[i][0].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for i in range(4)]
+            images_gt = self.render.get_image(
+                cam_type="four", bg="black", vertex_colors=self.verts_color_gt
+            )
+            images_gt = [
+                images_gt[i][0].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255
+                for i in range(4)
+            ]
             masks_gt = [np.ones_like(images_gt[i][..., 0]) for i in range(4)]
         if self.verts_color_pr is None:
             self.render_py.load_meshes(self.trimesh_pr)
@@ -468,15 +517,21 @@ class Evaluator:
         else:
             print('use vertex colors!')
             self.render.meshes = self.src_mesh
-            images_pr = self.render.get_image(cam_type="four", bg="black", vertex_colors=self.verts_color_pr)
-            images_pr = [images_pr[i][0].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255 for i in range(4)]
+            images_pr = self.render.get_image(
+                cam_type="four", bg="black", vertex_colors=self.verts_color_pr
+            )
+            images_pr = [
+                images_pr[i][0].reshape(3, 512, 512).permute(1, 2, 0).cpu().numpy() * 255
+                for i in range(4)
+            ]
             masks_pr = [np.ones_like(images_pr[i][..., 0]) for i in range(4)]
-        
+
         rgb_img = Image.fromarray(
             np.concatenate([
-                        np.stack(images_pr, axis=1).reshape([512, 512*4, 3]).astype(np.uint8), 
-                        np.stack(images_gt, axis=1).reshape([512, 512*4, 3]).astype(np.uint8), 
-            ], axis=0)
+                np.stack(images_pr, axis=1).reshape([512, 512 * 4, 3]).astype(np.uint8),
+                np.stack(images_gt, axis=1).reshape([512, 512 * 4, 3]).astype(np.uint8),
+            ],
+                           axis=0)
         )
         rgb_img.save(render_path)
         psnr, ssim, lpips = [], [], []
@@ -487,7 +542,9 @@ class Evaluator:
             psnr_i, ssim_i, lpips_i = self.cal_render_metrics(src_rgb_i, tgt_rgb_i)
             vis = src_rgb_i * 0.5 + tgt_rgb_i * 0.5
             vis_img = Image.fromarray(
-                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1)*255).astype(np.uint8)
+                (np.concatenate([vis, mask_i.reshape(512, 512, 1)], axis=-1) * 255).astype(
+                    np.uint8
+                )
             )
             vis_img.save(render_path.replace('.png', f'_{i}.png'))
             print(psnr_i, ssim_i, lpips_i)

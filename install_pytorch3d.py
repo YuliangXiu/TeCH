@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 import torch
 
 pyt_version_str = torch.__version__.split("+")[0].replace(".", "")

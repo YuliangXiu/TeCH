@@ -13,10 +13,9 @@
 # For comments or questions, please email us at pixie@tue.mpg.de
 # For commercial licensing contact, please contact ps-license@tuebingen.mpg.de
 
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import pickle
 import torch.nn.functional as F
 
 
@@ -97,10 +96,10 @@ def texture_flame2smplx(cached_data, flame_texture, smplx_texture):
         flame_texture.shape[1] * (source_uv_points[:, 0]), 0.0, flame_texture.shape[1]
     ).astype(int)
 
-    smplx_texture[y_coords[target_pixel_ids].astype(int),
-                  x_coords[target_pixel_ids].astype(int), :, ] = flame_texture[source_tex_coords[:,
-                                                                                                 0],
-                                                                               source_tex_coords[:,
-                                                                                                 1]]
+    smplx_texture[
+        y_coords[target_pixel_ids].astype(int),
+        x_coords[target_pixel_ids].astype(int),
+        :,
+    ] = flame_texture[source_tex_coords[:, 0], source_tex_coords[:, 1]]
 
     return smplx_texture

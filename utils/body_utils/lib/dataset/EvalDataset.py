@@ -14,22 +14,23 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-import torch.nn.functional as F
-from lib.common.render import Render
-from lib.dataset.mesh_util import (SMPLX, projection, rescale_smpl, HoppeMesh)
-import os.path as osp
-import numpy as np
-from PIL import Image
 import os
+import os.path as osp
+
 import cv2
-import trimesh
+import numpy as np
 import torch
+import torch.nn.functional as F
 import torchvision.transforms as transforms
+import trimesh
+from lib.common.render import Render
+from lib.dataset.mesh_util import SMPLX, HoppeMesh, projection, rescale_smpl
+from PIL import Image
 
 cape_gender = {
     "male":
-        ['00032', '00096', '00122', '00127', '00145', '00215', '02474', '03284', '03375', '03394'],
-    "female": ['00134', '00159', '03223', '03331', '03383']
+    ['00032', '00096', '00122', '00127', '00145', '00215', '02474', '03284', '03375',
+     '03394'], "female": ['00134', '00159', '03223', '03331', '03383']
 }
 
 
@@ -75,35 +76,38 @@ class EvalDataset:
                 "scale": self.scales[dataset_id],
             }
             if dataset == 'thuman2':
-                self.datasets_dict[dataset].update(
-                    {"subjects": ['thuman2/' + s.split('/')[0] for s in np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)]}
-                )
-                self.views = [int(s.split('/')[1]) for s in np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)]
+                self.datasets_dict[dataset].update({
+                    "subjects": [
+                        'thuman2/' + s.split('/')[0]
+                        for s in np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)
+                    ]
+                })
+                self.views = [
+                    int(s.split('/')[1])
+                    for s in np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)
+                ]
             else:
-                self.datasets_dict[dataset].update(
-                    {"subjects": np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)}
-                )
+                self.datasets_dict[dataset].update({
+                    "subjects":
+                    np.loadtxt(osp.join(dataset_dir, "test150.txt"), dtype=str)
+                })
 
         self.subject_list = self.get_subject_list()
         self.smplx = SMPLX()
 
         # PIL to tensor
-        self.image_to_tensor = transforms.Compose(
-            [
-                transforms.Resize(self.input_size),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
+        self.image_to_tensor = transforms.Compose([
+            transforms.Resize(self.input_size),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
 
         # PIL to tensor
-        self.mask_to_tensor = transforms.Compose(
-            [
-                transforms.Resize(self.input_size),
-                transforms.ToTensor(),
-                transforms.Normalize((0.0, ), (1.0, )),
-            ]
-        )
+        self.mask_to_tensor = transforms.Compose([
+            transforms.Resize(self.input_size),
+            transforms.ToTensor(),
+            transforms.Normalize((0.0, ), (1.0, )),
+        ])
 
         self.device = device
         self.render = Render(size=512, device=self.device)
@@ -125,7 +129,10 @@ class EvalDataset:
                 split_txt = osp.join(self.root, dataset, "test150.txt")
                 if osp.exists(split_txt) and osp.getsize(split_txt) > 0:
                     print(f"load from {split_txt}")
-                    subject_list += ['thuman2/' + s.split('/')[0] for s in np.loadtxt(split_txt, dtype=str).tolist()]
+                    subject_list += [
+                        'thuman2/' + s.split('/')[0]
+                        for s in np.loadtxt(split_txt, dtype=str).tolist()
+                    ]
             else:
                 if dataset == 'renderpeople':
                     split_txt = osp.join(self.root, dataset, "loose.txt")
@@ -145,7 +152,7 @@ class EvalDataset:
         print('get item')
 
         rid = index % len(self.rotations)
-        mid = index // len(self.rotations)        
+        mid = index // len(self.rotations)
         dataset = self.subject_list[mid].split("/")[0]
         rotation = self.rotations[rid]
         if dataset == 'thuman2':
@@ -167,36 +174,30 @@ class EvalDataset:
         }
 
         if dataset == "cape":
-            data_dict.update(
-                {
-                    "mesh_path":
-                        osp.join(self.datasets_dict[dataset]["mesh_dir"], f"{subject}.obj"),
-                    "smpl_path":
-                        osp.join(self.datasets_dict[dataset]["smpl_dir"], f"{subject}.obj"),
-                }
-            )
+            data_dict.update({
+                "mesh_path":
+                osp.join(self.datasets_dict[dataset]["mesh_dir"], f"{subject}.obj"),
+                "smpl_path":
+                osp.join(self.datasets_dict[dataset]["smpl_dir"], f"{subject}.obj"),
+            })
         elif dataset == "thuman2":
-            data_dict.update(
-                {
-                    "mesh_path":
-                        osp.join(self.datasets_dict[dataset]["mesh_dir"], subject, f"{subject}.obj"),
-                    "smplx_path":
-                        osp.join(self.datasets_dict[dataset]["smplx_dir"], f"{subject}.obj"),
-                }
-            )
+            data_dict.update({
+                "mesh_path":
+                osp.join(self.datasets_dict[dataset]["mesh_dir"], subject, f"{subject}.obj"),
+                "smplx_path":
+                osp.join(self.datasets_dict[dataset]["smplx_dir"], f"{subject}.obj"),
+            })
         else:
 
-            data_dict.update(
-                {
-                    "mesh_path":
-                        osp.join(
-                            self.datasets_dict[dataset]["mesh_dir"],
-                            f"{subject}.obj",
-                        ),
-                    "smplx_path":
-                        osp.join(self.datasets_dict[dataset]["smplx_dir"], f"{subject}.obj"),
-                }
-            )
+            data_dict.update({
+                "mesh_path":
+                osp.join(
+                    self.datasets_dict[dataset]["mesh_dir"],
+                    f"{subject}.obj",
+                ),
+                "smplx_path":
+                osp.join(self.datasets_dict[dataset]["smplx_dir"], f"{subject}.obj"),
+            })
 
         # load training data
         data_dict.update(self.load_calib(data_dict))
@@ -205,71 +206,76 @@ class EvalDataset:
         for name, channel in zip(self.in_total, self.in_total_dim):
 
             if f"{name}_path" not in data_dict.keys():
-                data_dict.update(
-                    {
-                        f"{name}_path":
-                            osp.join(self.root, render_folder, name, f"{rotation:03d}.png")
-                    }
-                )
+                data_dict.update({
+                    f"{name}_path":
+                    osp.join(self.root, render_folder, name, f"{rotation:03d}.png")
+                })
 
             # tensor update
             if os.path.exists(data_dict[f"{name}_path"]):
-                data_dict.update(
-                    {name: self.imagepath2tensor(data_dict[f"{name}_path"], channel, inv=False)[0]}
-                )
+                data_dict.update({
+                    name:
+                    self.imagepath2tensor(data_dict[f"{name}_path"], channel, inv=False)[0]
+                })
 
         data_dict.update(self.load_mesh(data_dict))
         data_dict.update(self.load_smpl(data_dict))
         if dataset == 'cape':
             data_dict.update({
-                "side_image_path1": osp.join(self.root, render_folder, "render", f"{120:03d}.png"),
-                "side_calib_path1": osp.join(self.root, render_folder, "calib", f"{120:03d}.txt"),
-                "side_image_path2": osp.join(self.root, render_folder, "render", f"{240:03d}.png"),
-                "side_calib_path2": osp.join(self.root, render_folder, "calib", f"{240:03d}.txt")
+                "side_image_path1":
+                osp.join(self.root, render_folder, "render", f"{120:03d}.png"), "side_calib_path1":
+                osp.join(self.root, render_folder, "calib", f"{120:03d}.txt"), "side_image_path2":
+                osp.join(self.root, render_folder, "render", f"{240:03d}.png"), "side_calib_path2":
+                osp.join(self.root, render_folder, "calib", f"{240:03d}.txt")
             })
             calib1 = self.load_calib_from_path(data_dict["side_calib_path1"])
             calib2 = self.load_calib_from_path(data_dict["side_calib_path2"])
-            side_image1, side_mask1 = self.imagepath2tensor(data_dict['side_image_path1'], 3, inv=False)
-            side_image2, side_mask2 = self.imagepath2tensor(data_dict['side_image_path2'], 3, inv=False)
+            side_image1, side_mask1 = self.imagepath2tensor(
+                data_dict['side_image_path1'], 3, inv=False
+            )
+            side_image2, side_mask2 = self.imagepath2tensor(
+                data_dict['side_image_path2'], 3, inv=False
+            )
             _, mask = self.imagepath2tensor(data_dict[f"image_path"], channel, inv=False)
             data_dict.update({
-                "side_image1": side_image1,
-                "side_mask1": side_mask1,
-                "side_calib1": calib1,
-                "side_image2": side_image2,
-                "side_mask2": side_mask2,
-                "side_calib2": calib2,
-                "mask": mask
+                "side_image1": side_image1, "side_mask1": side_mask1, "side_calib1": calib1,
+                "side_image2": side_image2, "side_mask2": side_mask2, "side_calib2": calib2, "mask":
+                mask
             })
         elif dataset == 'thuman2':
             data_dict.update({
-                "side_image_path1": osp.join(self.root, render_folder, "render", f"{(rotation+90)%360:03d}.png"),
-                "side_calib_path1": osp.join(self.root, render_folder, "calib", f"{(rotation+90)%360:03d}.txt"),
-                "side_image_path2": osp.join(self.root, render_folder, "render", f"{(rotation+270)%360:03d}.png"),
-                "side_calib_path2": osp.join(self.root, render_folder, "calib", f"{(rotation+270)%360:03d}.txt"),
-                "back_image_path": osp.join(self.root, render_folder, "render", f"{(rotation+180)%360:03d}.png"),
-                "back_calib_path": osp.join(self.root, render_folder, "calib", f"{(rotation+180)%360:03d}.txt")
+                "side_image_path1":
+                osp.join(self.root, render_folder, "render",
+                         f"{(rotation+90)%360:03d}.png"), "side_calib_path1":
+                osp.join(self.root, render_folder, "calib",
+                         f"{(rotation+90)%360:03d}.txt"), "side_image_path2":
+                osp.join(self.root, render_folder, "render",
+                         f"{(rotation+270)%360:03d}.png"), "side_calib_path2":
+                osp.join(self.root, render_folder, "calib",
+                         f"{(rotation+270)%360:03d}.txt"), "back_image_path":
+                osp.join(self.root, render_folder, "render", f"{(rotation+180)%360:03d}.png"),
+                "back_calib_path":
+                osp.join(self.root, render_folder, "calib", f"{(rotation+180)%360:03d}.txt")
             })
             side_calib1 = self.load_calib_from_path(data_dict["side_calib_path1"])
             side_calib2 = self.load_calib_from_path(data_dict["side_calib_path2"])
             back_calib = self.load_calib_from_path(data_dict["back_calib_path"])
-            side_image1, side_mask1 = self.imagepath2tensor(data_dict['side_image_path1'], 3, inv=False)
-            side_image2, side_mask2 = self.imagepath2tensor(data_dict['side_image_path2'], 3, inv=False)
-            back_image, back_mask = self.imagepath2tensor(data_dict['back_image_path'], 3, inv=False)
+            side_image1, side_mask1 = self.imagepath2tensor(
+                data_dict['side_image_path1'], 3, inv=False
+            )
+            side_image2, side_mask2 = self.imagepath2tensor(
+                data_dict['side_image_path2'], 3, inv=False
+            )
+            back_image, back_mask = self.imagepath2tensor(
+                data_dict['back_image_path'], 3, inv=False
+            )
             _, mask = self.imagepath2tensor(data_dict[f"image_path"], channel, inv=False)
             data_dict.update({
-                "side_image1": side_image1,
-                "side_mask1": side_mask1,
-                "side_calib1": side_calib1,
-                "side_image2": side_image2,
-                "side_mask2": side_mask2,
-                "side_calib2": side_calib2,
-                "back_image": back_image,
-                "back_mask": back_mask,
-                "back_calib": back_calib,
-                "mask": mask
+                "side_image1": side_image1, "side_mask1": side_mask1, "side_calib1": side_calib1,
+                "side_image2": side_image2, "side_mask2": side_mask2, "side_calib2": side_calib2,
+                "back_image": back_image, "back_mask": back_mask, "back_calib": back_calib, "mask":
+                mask
             })
-
 
         del data_dict["mesh"]
 
@@ -287,7 +293,9 @@ class EvalDataset:
             image = Image.fromarray(
                 cv2.inpaint(img * mask[..., None], fill_mask, 3, cv2.INPAINT_TELEA)
             )
-            masked_image = Image.fromarray(np.concatenate([image, mask[..., None].astype(np.uint8)*255], axis=-1))
+            masked_image = Image.fromarray(
+                np.concatenate([image, mask[..., None].astype(np.uint8) * 255], axis=-1)
+            )
             masked_image.save(path.replace('.png', '_masked.png'))
             #print('saved matted image to {}'.format(path.replace('.png', '_masked.png')))
             mask = Image.fromarray(mask)
@@ -300,7 +308,6 @@ class EvalDataset:
         image = (image * mask)[:channel]
 
         return (image * (0.5 - inv) * 2.0).float(), mask
-    
 
     def load_calib_from_path(self, path):
         calib_data = np.loadtxt(path, dtype=float)
@@ -329,14 +336,13 @@ class EvalDataset:
         rets = {}
         if isinstance(scan_mesh.visual, trimesh.visual.ColorVisuals):
             rets.update({
-                "verts_color": torch.as_tensor(np.array(scan_mesh.visual.vertex_colors[None, :, :3]/255)).float()
+                "verts_color":
+                torch.as_tensor(np.array(scan_mesh.visual.vertex_colors[None, :, :3] / 255)).float()
             })
         mesh = HoppeMesh(verts * scale, faces)
         rets.update({
-            "mesh": mesh,
-            "verts": torch.as_tensor(verts * scale).float(),
-            "faces": torch.as_tensor(faces).long(),
-            'trimesh': scan_mesh
+            "mesh": mesh, "verts": torch.as_tensor(verts * scale).float(), "faces":
+            torch.as_tensor(faces).long(), 'trimesh': scan_mesh
         })
         return rets
 
@@ -354,7 +360,7 @@ class EvalDataset:
 
         return_dict = {
             "smpl_verts": smplx_verts,
-            #"smpl_joints": smplx_joints,
+        #"smpl_joints": smplx_joints,
             "smpl_faces": smplx_faces,
         }
 

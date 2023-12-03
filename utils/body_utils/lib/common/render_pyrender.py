@@ -19,20 +19,14 @@ import os
 
 import cv2
 import numpy as np
-import torch
-from PIL import ImageColor
-from pytorch3d.renderer import look_at_view_transform
 #from pytorch3d.renderer.mesh import TexturesVertex, TexturesUV
 #from pytorch3d.structures import Meshes
 import pyrender
-from termcolor import colored
-from tqdm import tqdm
-
-import lib.common.render_utils as util
-from lib.common.imutils import blend_rgb_norm
-from lib.dataset.mesh_util import get_visibility
+import pyrr
+import torch
 import trimesh
-import pyrr 
+from pytorch3d.renderer import look_at_view_transform
+
 
 def image2vid(images, vid_path):
 
@@ -77,7 +71,7 @@ class PyRender:
                 (-self.dis, self.mesh_y_center, 0),
             ]), "around":
             torch.tensor([(
-            100.0 * math.cos(np.pi / 180 * angle), self.mesh_y_center,
+                100.0 * math.cos(np.pi / 180 * angle), self.mesh_y_center,
                 100.0 * math.sin(np.pi / 180 * angle)
             ) for angle in range(0, 360, self.step)])
         }
@@ -102,15 +96,20 @@ class PyRender:
 
         camera_poses = []
         for i in idx:
-            camera_poses.append(np.linalg.inv(np.array(pyrr.Matrix44.look_at(
-                eye=self.cam_pos[type][i],
-                target=np.array([0, self.mesh_y_center, 0]),
-                up=np.array([0, 1, 0])
-            )).T))
+            camera_poses.append(
+                np.linalg.inv(
+                    np.array(
+                        pyrr.Matrix44.look_at(
+                            eye=self.cam_pos[type][i],
+                            target=np.array([0, self.mesh_y_center, 0]),
+                            up=np.array([0, 1, 0])
+                        )
+                    ).T
+                )
+            )
             # camera_mats[i][:3, :3] = R[i].T
             # camera_mats[i][:3, 3] = -R[i].T @ T[i]
         return camera_poses
-
 
     def load_meshes(self, mesh: trimesh.Trimesh):
         """load mesh into the pytorch3d renderer
@@ -123,45 +122,57 @@ class PyRender:
         # primitive_material = pyrender.material.MetallicRoughnessMaterial(
         #         alphaMode='BLEND',
         #         baseColorFactor=[0.3, 0.3, 0.3, 1.0],
-        #         metallicFactor=0.8, 
-        #         roughnessFactor=0.8 
+        #         metallicFactor=0.8,
+        #         roughnessFactor=0.8
         #     )
-        self.meshes = pyrender.Mesh.from_trimesh(mesh, smooth=False) #, material=primitive_material)
+        self.meshes = pyrender.Mesh.from_trimesh(
+            mesh, smooth=False
+        )    #, material=primitive_material)
 
     def get_image(self, cam_type="frontback", type="rgb", bg="gray", uv_textures=False):
         camera_poses = self.get_camera_poses(cam_type)
         images = []
         masks = []
         for pose in camera_poses:
-            scene = pyrender.Scene(ambient_light=(1.0,1.0,1.0))
+            scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
             scene.add(self.meshes)
             camera = pyrender.OrthographicCamera(1., 1.)
             #camera_node = pyrender.Node(camera=camera, matrix=mat)
             scene.add(camera, pose=pose)
-            color, depth = self.renderer.render(scene, flags=pyrender.constants.RenderFlags.SKIP_CULL_FACES | pyrender.constants.RenderFlags.ALL_SOLID | pyrender.constants.RenderFlags.SKIP_CULL_FACES)
+            color, depth = self.renderer.render(
+                scene,
+                flags=pyrender.constants.RenderFlags.SKIP_CULL_FACES |
+                pyrender.constants.RenderFlags.ALL_SOLID |
+                pyrender.constants.RenderFlags.SKIP_CULL_FACES
+            )
             print(color.shape, depth.shape)
             mask = depth > 0
             color = cv2.resize(color, (self.size, self.size), interpolation=cv2.INTER_CUBIC)
-            mask = cv2.resize((mask*255).astype(np.uint8), (self.size, self.size), interpolation=cv2.INTER_CUBIC) == 255
+            mask = cv2.resize((mask * 255).astype(np.uint8), (self.size, self.size),
+                              interpolation=cv2.INTER_CUBIC) == 255
             images.append(color)
             masks.append(mask)
         return images, masks
-    
+
     def get_image_depth(self, cam_type="frontback", type="rgb", bg="gray", uv_textures=False):
         camera_poses = self.get_camera_poses(cam_type)
         images = []
         masks = []
         depths = []
         for pose in camera_poses:
-            scene = pyrender.Scene(ambient_light=(1.0,1.0,1.0))
+            scene = pyrender.Scene(ambient_light=(1.0, 1.0, 1.0))
             scene.add(self.meshes)
             camera = pyrender.OrthographicCamera(1., 1.)
             #camera_node = pyrender.Node(camera=camera, matrix=mat)
             scene.add(camera, pose=pose)
-            color, depth = self.renderer.render(scene, flags=pyrender.constants.RenderFlags.SKIP_CULL_FACES | pyrender.constants.RenderFlags.ALL_SOLID | pyrender.constants.RenderFlags.SKIP_CULL_FACES)
+            color, depth = self.renderer.render(
+                scene,
+                flags=pyrender.constants.RenderFlags.SKIP_CULL_FACES |
+                pyrender.constants.RenderFlags.ALL_SOLID |
+                pyrender.constants.RenderFlags.SKIP_CULL_FACES
+            )
             mask = depth > 0
             images.append(color)
             masks.append(mask)
             depths.append(depth)
         return images, masks, depths
- 

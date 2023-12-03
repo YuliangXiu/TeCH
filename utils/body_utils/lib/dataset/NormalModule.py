@@ -14,11 +14,10 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-from torch.utils.data import DataLoader
-from lib.dataset.NormalDataset import NormalDataset
-
 # pytorch lightning related libs
 import pytorch_lightning as pl
+from lib.dataset.NormalDataset import NormalDataset
+from torch.utils.data import DataLoader
 
 
 class NormalModule(pl.LightningDataModule):

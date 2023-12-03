@@ -4,7 +4,7 @@ boto3
 chumpy
 dataclasses
 dearpygui
-diffusers
+diffusers==0.15.0
 einops
 imageio-ffmpeg
 imageio
@@ -44,6 +44,8 @@ torchmetrics
 transformers
 trimesh
 xatlas
+yapf
+autoflake
 git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
 git+https://github.com/openai/CLIP.git@main#egg=clip
 git+https://github.com/marian42/mesh_to_sdf.git

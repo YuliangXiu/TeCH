@@ -18,32 +18,16 @@ import math
 import os
 
 import cv2
+import lib.common.render_utils as util
 import numpy as np
 import torch
+from lib.common.imutils import blend_rgb_norm
+from lib.dataset.mesh_util import get_visibility
 from PIL import ImageColor
-from pytorch3d.renderer import (
-    AlphaCompositor,
-    BlendParams,
-    FoVOrthographicCameras,
-    MeshRasterizer,
-    MeshRenderer,
-    PointsRasterizationSettings,
-    PointsRasterizer,
-    PointsRenderer,
-    RasterizationSettings,
-    SoftSilhouetteShader,
-    TexturesVertex,
-    blending,
-    look_at_view_transform,
-)
-from pytorch3d.renderer.mesh import TexturesVertex, TexturesUV
+from pytorch3d.renderer.mesh import TexturesUV, TexturesVertex
 from pytorch3d.structures import Meshes
 from termcolor import colored
 from tqdm import tqdm
-
-import lib.common.render_utils as util
-from lib.common.imutils import blend_rgb_norm
-from lib.dataset.mesh_util import get_visibility
 
 
 def image2vid(images, vid_path):
@@ -211,7 +195,7 @@ class Render:
 
             self.silhouetteRas = MeshRasterizer(
                 cameras=camera, raster_settings=self.raster_settings_silhouette
-            ) 
+            )
             self.renderer = MeshRenderer(
                 rasterizer=self.silhouetteRas, shader=SoftSilhouetteShader()
             )
@@ -285,12 +269,10 @@ class Render:
 
             current_mesh = self.meshes[mesh_id]
             if vertex_colors is None:
-                verts_features = (current_mesh.verts_normals_padded() + 1.0) * 0.5 
+                verts_features = (current_mesh.verts_normals_padded() + 1.0) * 0.5
             else:
                 verts_features = vertex_colors
-            current_mesh.textures = TexturesVertex(
-                verts_features=verts_features
-            )
+            current_mesh.textures = TexturesVertex(verts_features=verts_features)
             if type == "depth":
                 fragments = self.meshRas(current_mesh.extend(len(self.cam_pos[cam_type])))
                 images = fragments.zbuf[..., 0]

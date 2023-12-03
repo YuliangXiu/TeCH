@@ -2,9 +2,9 @@
 
 import torch
 import torch.nn as nn
-from torch import autograd
 import torch.nn.functional as F
 from lib.net.Discriminator import StyleDiscriminator
+from torch import autograd
 
 
 def hinge_loss(fake_pred, real_pred, mode):

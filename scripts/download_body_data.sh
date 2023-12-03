@@ -50,4 +50,10 @@ echo -e "\nDownloading PIXIE..."
 wget --post-data "username=$username&password=$password" 'https://download.is.tue.mpg.de/download.php?domain=icon&sfile=HPS/pixie_data.zip&resume=1' -O './data/body_data/HPS/pixie_data.zip' --no-check-certificate --continue
 cd data/body_data/HPS && unzip pixie_data.zip
 rm -f pixie_data.zip
-cd ../../..
+
+# smpl+smplx jsons
+cd ../
+wget https://raw.githubusercontent.com/YuliangXiu/ECON/master/lib/common/smpl_vert_segmentation.json .
+wget https://raw.githubusercontent.com/YuliangXiu/ECON/master/lib/common/smplx_vert_segmentation.json .
+
+cd ../..

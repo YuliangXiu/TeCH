@@ -14,36 +14,31 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-import warnings
 import logging
+import warnings
 
 warnings.filterwarnings("ignore")
 logging.getLogger("lightning").setLevel(logging.ERROR)
 logging.getLogger("trimesh").setLevel(logging.ERROR)
 
-from lib.pixielib.utils.config import cfg as pixie_cfg
-from lib.pixielib.pixie import PIXIE
-from lib.pixielib.models.SMPLX import SMPLX as PIXIE_SMPLX
-from lib.common.imutils import process_image, load_MODNet
-from lib.common.train_util import Format
-from lib.net.geometry import rotation_matrix_to_angle_axis, rot6d_to_rotmat
-
-
-from lib.common.config import cfg
-from lib.common.render import Render
-from lib.dataset.body_model import TetraSMPLModel
-from lib.dataset.mesh_util import get_visibility, SMPLX
+import glob
 import json
+import os.path as osp
+
+import numpy as np
+import torch
 import torch.nn.functional as F
+from lib.common.imutils import load_MODNet, process_image
+from lib.common.render import Render
+from lib.common.train_util import Format
+from lib.dataset.mesh_util import SMPLX, get_visibility
+from lib.pixielib.models.SMPLX import SMPLX as PIXIE_SMPLX
+from lib.pixielib.pixie import PIXIE
+from lib.pixielib.utils.config import cfg as pixie_cfg
+from PIL import ImageFile
+from termcolor import colored
 from torchvision import transforms
 from torchvision.models import detection
-
-import os.path as osp
-import torch
-import glob
-import numpy as np
-from termcolor import colored
-from PIL import ImageFile
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -66,9 +61,10 @@ class TestDataset:
         keep_lst = sorted(glob.glob(f"{self.image_dir}/*"))
         img_fmts = ["jpg", "png", "jpeg", "JPG", "bmp", "exr"]
         if self.image_dir is not None:
-            self.subject_list = sorted(
-                [item for item in keep_lst if item.split(".")[-1] in img_fmts], reverse=False
-            )
+            self.subject_list = sorted([
+                item for item in keep_lst if item.split(".")[-1] in img_fmts
+            ],
+                                       reverse=False)
         else:
             assert self.image_path is not None, "at least one of the param image_dir and image_path should be provided"
             self.subject_list = [self.image_path]
@@ -93,7 +89,9 @@ class TestDataset:
                 f"SMPL-X estimate with {Format.start} {self.hps_type.upper()} {Format.end}", "green"
             )
         )
-        self.modnet = load_MODNet("thirdparties/MODNet/pretrained/modnet_photographic_portrait_matting.ckpt").to(self.device)
+        self.modnet = load_MODNet(
+            "thirdparties/MODNet/pretrained/modnet_photographic_portrait_matting.ckpt"
+        ).to(self.device)
 
         self.render = Render(size=512, device=self.device)
 
@@ -148,9 +146,11 @@ class TestDataset:
     def read_openpose_keypoints(self, kp_path, aff_path):
         with open(kp_path, 'rb') as f:
             data = json.load(f)
-        kps = torch.as_tensor(data['people'][0]['face_keypoints_2d'], dtype=torch.float32).reshape(-1, 3)
+        kps = torch.as_tensor(data['people'][0]['face_keypoints_2d'],
+                              dtype=torch.float32).reshape(-1, 3)
         aff = torch.as_tensor(np.load(aff_path), dtype=torch.float32)
-        kps[:, :2] = (aff @ torch.cat([kps[:, :2].T, torch.ones_like(kps[:, 2:]).T], dim=0)).T / 4096
+        kps[:, :2
+           ] = (aff @ torch.cat([kps[:, :2].T, torch.ones_like(kps[:, 2:]).T], dim=0)).T / 4096
         #kps[:, :2] /= 1024
         #print(kps.min(dim=0)[0], kps.max(dim=0)[0])
         return kps
@@ -160,7 +160,9 @@ class TestDataset:
         img_path = self.subject_list[index]
         img_name = img_path.split("/")[-1].rsplit(".", 1)[0]
 
-        arr_dict = process_image(img_path, self.hps_type, self.single, 1024, self.detector, modnet=self.modnet)
+        arr_dict = process_image(
+            img_path, self.hps_type, self.single, 1024, self.detector, modnet=self.modnet
+        )
         arr_dict.update({"name": img_name})
 
         kp_path = img_path.replace('.png', '_00_keypoints.json')
