@@ -1,19 +1,19 @@
-import numpy as np
-import trimesh
-import torch
 import argparse
-import os.path as osp
-import lib.smplx as smplx
+import json
+
 import cv2
+import lib.smplx as smplx
+import numpy as np
+import torch
+import trimesh
+from lib.common.local_affine import register
+from lib.common.render_pyrender import PyRender
+from lib.dataset.mesh_util import *
 from pytorch3d.ops import SubdivideMeshes
 from pytorch3d.structures import Meshes
-
-from lib.smplx.lbs import general_lbs
-from lib.dataset.mesh_util import *
 from scipy.spatial import cKDTree
-from lib.common.local_affine import register
-import json
-from lib.common.render_pyrender import PyRender
+
+# os.environ["PYOPENGL_PLATFORM"]="egl"
 
 # loading cfg file
 parser = argparse.ArgumentParser()
@@ -77,11 +77,14 @@ smpl_verts = smpl_out_lst[2].vertices.detach()[0]
 smpl_tree = cKDTree(smpl_verts.cpu().numpy())
 dist, idx = smpl_tree.query(tech_obj.vertices, k=5)
 
-if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_smpl_da.obj"):
+if True:    #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_smpl_da.obj"):
 
     # t-pose for TeCH
     tech_verts = torch.tensor(tech_obj.vertices).float()
-    bc_weights, nearest_face = query_barycentric_weights(smpl_verts.new_tensor(tech_obj.vertices[None]), smpl_verts[None], smpl_verts.new_tensor(np.array(smpl_model.faces, dtype=np.int32)[None]))
+    bc_weights, nearest_face = query_barycentric_weights(
+        smpl_verts.new_tensor(tech_obj.vertices[None]), smpl_verts[None],
+        smpl_verts.new_tensor(np.array(smpl_model.faces, dtype=np.int32)[None])
+    )
 
     ## calculate occlusion map!
     tech_obj_cp = tech_obj.copy()
@@ -94,7 +97,10 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     vert_seg_tensor = torch.zeros(len(smpl_verts), len(seg_labels)).float()
     for k in seg_labels:
         vert_seg_tensor[smplx_vert_seg[k], seg_labels.index(k)] = 1
-    tech_vert_seg_weighted = sum([vert_seg_tensor[smpl_model.faces[nearest_face[0]][:, i].astype(np.int32)] * bc_weights[0, :, i].reshape(-1, 1) for i in range(3)])
+    tech_vert_seg_weighted = sum([
+        vert_seg_tensor[smpl_model.faces[nearest_face[0]][:, i].astype(np.int32)] *
+        bc_weights[0, :, i].reshape(-1, 1) for i in range(3)
+    ])
     seg_max_weight, tech_vert_seg = tech_vert_seg_weighted.max(dim=-1)
     tech_vert_seg[seg_max_weight < 0.5] = -1
     # ['rightHand', 'rightUpLeg', 'leftArm', 'head', 'leftEye', 'rightEye', 'leftLeg', 'leftToeBase', 'leftFoot', 'spine1', 'spine2', 'leftShoulder', 'rightShoulder', 'rightFoot', 'rightArm', 'leftHandIndex1', 'rightLeg', 'rightHandIndex1', 'leftForeArm', 'rightForeArm', 'neck', 'rightToeBase', 'spine', 'leftUpLeg', 'eyeballs', 'leftHand', 'hips']
@@ -102,6 +108,7 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     L_labels_occ = ['leftHand', 'leftArm', 'leftForeArm', 'leftHandIndex1']
     R_labels_remove = ['rightArm', 'rightForeArm', 'rightHandIndex1', 'rightShoulder']
     R_labels_occ = ['rightHand', 'rightArm', 'rightForeArm', 'rightHandIndex1']
+
     def get_occ_map(mesh, vert_label, labels_remove, labels_occ, resolution=1024):
         vert_mask_remove = torch.zeros(len(vert_label)).bool()
         vert_mask_occ = torch.zeros(len(vert_label)).bool()
@@ -132,30 +139,40 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     loss_mask = loss_mask[0].reshape(2048, 2048)
     occ_mask = (~left_occ_map) & (~right_occ_map)
     kernel = np.ones((20, 20), np.float32)
-    erosion_mask = cv2.erode((occ_mask*255).astype(np.uint8), kernel, cv2.BORDER_REFLECT) == 255
+    erosion_mask = cv2.erode((occ_mask * 255).astype(np.uint8), kernel, cv2.BORDER_REFLECT) == 255
     loss_mask = loss_mask & erosion_mask
-    Image.fromarray((loss_mask*255).astype(np.uint8)).save(f'{prefix}_occ_mask.png')
-    
+    Image.fromarray((loss_mask * 255).astype(np.uint8)).save(f'{prefix.replace("/obj/", "/png/")}_occ_mask.png')
+
     bc_weights = torch.tensor(bc_weights).to(device)
 
-
-    rot_mat_t = sum([smpl_out_lst[2].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(nearest_face[0]).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)])
+    rot_mat_t = sum([
+        smpl_out_lst[2].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(
+            nearest_face[0]
+        ).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)
+    ])
     #rot_mat_t = smpl_out_lst[2].vertex_transformation.detach()[0][idx[:, 0]]
     homo_coord = torch.ones_like(tech_verts)[..., :1]
     tech_cano_verts = torch.inverse(rot_mat_t.cpu()) @ torch.cat([tech_verts, homo_coord],
-                                                           dim=1).unsqueeze(-1)
+                                                                 dim=1).unsqueeze(-1)
     tech_cano_verts = tech_cano_verts[:, :3, 0].cpu()
     tech_cano = trimesh.Trimesh(tech_cano_verts, tech_obj.faces)
 
     # da-pose for TeCH
-#    rot_mat_da = smpl_out_lst[1].vertex_transformation.detach()[0][idx[:, 0]]
-    rot_mat_da = sum([smpl_out_lst[1].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(nearest_face[0]).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)])
+    #    rot_mat_da = smpl_out_lst[1].vertex_transformation.detach()[0][idx[:, 0]]
+    rot_mat_da = sum([
+        smpl_out_lst[1].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(
+            nearest_face[0]
+        ).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)
+    ])
     tech_da_verts = rot_mat_da.cpu() @ torch.cat([tech_cano_verts, homo_coord], dim=1).unsqueeze(-1)
     tech_da = trimesh.Trimesh(tech_da_verts[:, :3, 0].cpu(), tech_obj.faces)
 
     # da-pose for SMPL-X
     smpl_da = trimesh.Trimesh(
-        smpl_out_lst[1].vertices.detach().cpu()[0], smpl_model.faces, maintain_orders=True, process=False
+        smpl_out_lst[1].vertices.detach().cpu()[0],
+        smpl_model.faces,
+        maintain_orders=True,
+        process=False
     )
     smpl_da.export(f"{prefix}_smpl_da.obj")
 
@@ -176,7 +193,7 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     smpl_da_body.update_faces(register_mask[smpl_da.faces].all(axis=1))
     smpl_da_body.remove_unreferenced_vertices()
     smpl_da_body = keep_largest(smpl_da_body)
-    
+
     # upsample the smpl_da_body and do registeration
     smpl_da_body = Meshes(
         verts=[torch.tensor(smpl_da_body.vertices).float()],
@@ -189,20 +206,22 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     tech_da_body = tech_da.copy()
     hand_mesh = smpl_da.copy()
     hand_mask = torch.zeros(smplx_container.smplx_verts.shape[0], )
-    hand_mask.index_fill_(
-        0, torch.tensor(smplx_container.smplx_mano_vid_dict["left_hand"]), 1.0
-    )
-    hand_mask.index_fill_(
-        0, torch.tensor(smplx_container.smplx_mano_vid_dict["right_hand"]), 1.0
-    )
+    hand_mask.index_fill_(0, torch.tensor(smplx_container.smplx_mano_vid_dict["left_hand"]), 1.0)
+    hand_mask.index_fill_(0, torch.tensor(smplx_container.smplx_mano_vid_dict["right_hand"]), 1.0)
     hand_mesh = apply_vertex_mask(hand_mesh, hand_mask)
-    tech_da_body = part_removal(tech_da_body, hand_mesh, 8e-2, device=device, smpl_obj=smpl_da, region="hand")
+    tech_da_body = part_removal(
+        tech_da_body, hand_mesh, 8e-2, device=device, smpl_obj=smpl_da, region="hand"
+    )
     if args.face:
         face_mesh = smpl_da.copy()
         face_mesh = apply_vertex_mask(face_mesh, smplx_container.front_flame_vertex_mask)
-        tech_da_body = part_removal(tech_da_body, face_mesh, 6e-2, device=device, smpl_obj=smpl_da, region="face")
+        tech_da_body = part_removal(
+            tech_da_body, face_mesh, 6e-2, device=device, smpl_obj=smpl_da, region="face"
+        )
         smpl_face = smpl_da.copy()
-        smpl_face.update_faces(smplx_container.front_flame_vertex_mask.numpy()[smpl_face.faces].all(axis=1))
+        smpl_face.update_faces(
+            smplx_container.front_flame_vertex_mask.numpy()[smpl_face.faces].all(axis=1)
+        )
         smpl_face.remove_unreferenced_vertices()
     # stitch the registered SMPL-X body and floating hands to TeCH
     tech_da_tree = cKDTree(tech_da.vertices)
@@ -211,35 +230,44 @@ if True: #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix}_s
     smpl_da_body.remove_unreferenced_vertices()
 
     smpl_hand = smpl_da.copy()
-    smpl_hand.update_faces(smplx_container.smplx_mano_vertex_mask.numpy()[smpl_hand.faces].all(axis=1))
+    smpl_hand.update_faces(
+        smplx_container.smplx_mano_vertex_mask.numpy()[smpl_hand.faces].all(axis=1)
+    )
     smpl_hand.remove_unreferenced_vertices()
-    
+
     tech_da = [smpl_hand, smpl_da_body, tech_da_body]
     if args.face:
         tech_da.append(smpl_face)
     tech_da = sum(tech_da)
-    
+
     tech_da = poisson(tech_da, f"{prefix}_tech_da.obj", depth=10)
 
-    
 else:
     tech_da = trimesh.load(f"{prefix}_tech_da.obj", maintain_orders=True, process=False)
     smpl_da = trimesh.load(f"{prefix}_smpl_da.obj", maintain_orders=True, process=False)
-
 
 smpl_tree = cKDTree(smpl_da.vertices)
 dist, idx = smpl_tree.query(tech_da.vertices, k=5)
 knn_weights = np.exp(-dist**2)
 knn_weights /= knn_weights.sum(axis=1, keepdims=True)
-bc_weights, nearest_face = query_barycentric_weights(torch.tensor(tech_da.vertices).unsqueeze(0).to(device), torch.tensor(smpl_da.vertices).unsqueeze(0).to(device), torch.tensor(np.array(smpl_da.faces, dtype=np.int32)).unsqueeze(0).to(device))
+bc_weights, nearest_face = query_barycentric_weights(
+    torch.tensor(tech_da.vertices).unsqueeze(0).to(device),
+    torch.tensor(smpl_da.vertices).unsqueeze(0).to(device),
+    torch.tensor(np.array(smpl_da.faces, dtype=np.int32)).unsqueeze(0).to(device)
+)
 bc_weights = torch.tensor(bc_weights).to(device)
 
-rot_mat_da = sum([smpl_out_lst[1].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(nearest_face[0]).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)]).float().cpu()
+rot_mat_da = sum([
+    smpl_out_lst[1].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(
+        nearest_face[0]
+    ).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)
+]).float().cpu()
 tech_da_verts = torch.tensor(tech_da.vertices).float()
 print('tech_da_verts.shape', tech_da_verts.shape)
-tech_cano_verts = torch.inverse(rot_mat_da) @ torch.cat(
-    [tech_da_verts, torch.ones_like(tech_da_verts)[..., :1]], dim=1
-).unsqueeze(-1)
+tech_cano_verts = torch.inverse(rot_mat_da) @ torch.cat([
+    tech_da_verts, torch.ones_like(tech_da_verts)[..., :1]
+],
+                                                        dim=1).unsqueeze(-1)
 tech_cano_verts = tech_cano_verts[:, :3, 0].double()
 print('tech_cano_verts.shape', tech_cano_verts.shape)
 
@@ -248,10 +276,16 @@ print('tech_cano_verts.shape', tech_cano_verts.shape)
 # ----------------------------------------------------
 
 new_pose = smpl_out_lst[2].full_pose
-rot_mat_pose = sum([smpl_out_lst[2].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(nearest_face[0]).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)]).float().cpu()
-posed_tech_verts = rot_mat_pose @ torch.cat(
-    [tech_cano_verts.float(), torch.ones_like(tech_cano_verts.float())[..., :1]], dim=1
-).unsqueeze(-1)
+rot_mat_pose = sum([
+    smpl_out_lst[2].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(
+        nearest_face[0]
+    ).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)
+]).float().cpu()
+posed_tech_verts = rot_mat_pose @ torch.cat([
+    tech_cano_verts.float(),
+    torch.ones_like(tech_cano_verts.float())[..., :1]
+],
+                                            dim=1).unsqueeze(-1)
 posed_tech_verts = posed_tech_verts[:, :3, 0].double()
 print('posed_tech_verts.shape', posed_tech_verts.shape)
 tech_pose = trimesh.Trimesh(posed_tech_verts.detach(), tech_da.faces)
@@ -263,10 +297,16 @@ tech_pose.vertices *= np.array([1.0, -1.0, -1.0])
 tech_pose.export(f"{prefix}_pose.obj")
 
 new_pose = smpl_out_lst[3].full_pose
-rot_mat_pose = sum([smpl_out_lst[3].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(nearest_face[0]).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)]).float().cpu()
-posed_tech_verts = rot_mat_pose @ torch.cat(
-    [tech_cano_verts.float(), torch.ones_like(tech_cano_verts.float())[..., :1]], dim=1
-).unsqueeze(-1)
+rot_mat_pose = sum([
+    smpl_out_lst[3].vertex_transformation.detach()[0][smpl_model.faces_tensor[torch.tensor(
+        nearest_face[0]
+    ).long()][:, i]] * bc_weights[0, :, i].reshape(-1, 1, 1) for i in range(3)
+]).float().cpu()
+posed_tech_verts = rot_mat_pose @ torch.cat([
+    tech_cano_verts.float(),
+    torch.ones_like(tech_cano_verts.float())[..., :1]
+],
+                                            dim=1).unsqueeze(-1)
 posed_tech_verts = posed_tech_verts[:, :3, 0].double()
 print('aposed_tech_verts.shape', posed_tech_verts.shape)
 tech_pose = trimesh.Trimesh(posed_tech_verts.detach(), tech_da.faces)

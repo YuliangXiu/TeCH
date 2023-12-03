@@ -11,9 +11,9 @@ synchronization overhead as well as the amount of boilerplate in user
 code."""
 
 import re
+
 import numpy as np
 import torch
-import lib.dnnlib
 
 from . import misc
 

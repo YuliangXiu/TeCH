@@ -1,16 +1,12 @@
 import importlib
-
-import torch
-import numpy as np
-from collections import abc
-from einops import rearrange
-from functools import partial
-
 import multiprocessing as mp
-from threading import Thread
-from queue import Queue
-
+from collections import abc
 from inspect import isfunction
+from queue import Queue
+from threading import Thread
+
+import numpy as np
+import torch
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -106,7 +102,12 @@ def _do_parallel_data_prefetch(func, Q, data, idx, idx_to_fn=False):
 
 
 def parallel_data_prefetch(
-        func: callable, data, n_proc, target_data_type="ndarray", cpu_intensive=True, use_worker_id=False
+    func: callable,
+    data,
+    n_proc,
+    target_data_type="ndarray",
+    cpu_intensive=True,
+    use_worker_id=False
 ):
     # if target_data_type not in ["ndarray", "list"]:
     #     raise ValueError(
@@ -137,22 +138,13 @@ def parallel_data_prefetch(
         proc = Thread
     # spawn processes
     if target_data_type == "ndarray":
-        arguments = [
-            [func, Q, part, i, use_worker_id]
-            for i, part in enumerate(np.array_split(data, n_proc))
-        ]
+        arguments = [[func, Q, part, i, use_worker_id]
+                     for i, part in enumerate(np.array_split(data, n_proc))]
     else:
-        step = (
-            int(len(data) / n_proc + 1)
-            if len(data) % n_proc != 0
-            else int(len(data) / n_proc)
-        )
-        arguments = [
-            [func, Q, part, i, use_worker_id]
-            for i, part in enumerate(
-                [data[i: i + step] for i in range(0, len(data), step)]
-            )
-        ]
+        step = (int(len(data) / n_proc + 1) if len(data) % n_proc != 0 else int(len(data) / n_proc))
+        arguments = [[func, Q, part, i, use_worker_id]
+                     for i, part in enumerate([data[i:i + step]
+                                               for i in range(0, len(data), step)])]
     processes = []
     for i in range(n_proc):
         p = proc(target=_do_parallel_data_prefetch, args=arguments[i])

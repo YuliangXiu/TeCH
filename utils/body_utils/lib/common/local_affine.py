@@ -5,13 +5,13 @@
 # file that should have been included as part of this package.
 
 import torch
-import trimesh
 import torch.nn as nn
-from tqdm import tqdm
-from pytorch3d.structures import Meshes
-from pytorch3d.loss import chamfer_distance
-from lib.dataset.mesh_util import update_mesh_shape_prior_losses
+import trimesh
 from lib.common.train_util import init_loss
+from lib.dataset.mesh_util import update_mesh_shape_prior_losses
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.structures import Meshes
+from tqdm import tqdm
 
 
 # reference: https://github.com/wuhaozhe/pytorch-nicp
@@ -84,11 +84,9 @@ def register(target_mesh, src_mesh, device, verbose=True):
         src_mesh.verts_padded().shape[0], src_mesh.edges_packed()
     ).to(device)
 
-    optimizer_cloth = torch.optim.Adam(
-        [{
-            'params': local_affine_model.parameters()
-        }], lr=1e-2, amsgrad=True
-    )
+    optimizer_cloth = torch.optim.Adam([{'params': local_affine_model.parameters()}],
+                                       lr=1e-2,
+                                       amsgrad=True)
     scheduler_cloth = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer_cloth,
         mode="min",
@@ -104,7 +102,7 @@ def register(target_mesh, src_mesh, device, verbose=True):
         loop_cloth = tqdm(range(100))
     else:
         loop_cloth = range(100)
-    
+
     for i in loop_cloth:
 
         optimizer_cloth.zero_grad()

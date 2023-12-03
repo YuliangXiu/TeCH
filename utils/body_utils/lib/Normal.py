@@ -1,9 +1,9 @@
-from lib.net import NormalNet
-from lib.common.train_util import batch_mean
-import torch
 import numpy as np
-from skimage.transform import resize
 import pytorch_lightning as pl
+import torch
+from lib.common.train_util import batch_mean
+from lib.net import NormalNet
+from skimage.transform import resize
 
 
 class Normal(pl.LightningModule):

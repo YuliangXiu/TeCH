@@ -1,16 +1,16 @@
 import os
-os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
+
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2
 import mediapipe as mp
-import torch
 import numpy as np
+import torch
 import torch.nn.functional as F
-from PIL import Image
-from thirdparties.MODNet.src.models.modnet import MODNet
-
-from torchvision import transforms
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
+from PIL import Image
+from torchvision import transforms
 
+from thirdparties.MODNet.src.models.modnet import MODNet
 
 IMG_NORM_MEAN = [0.485, 0.456, 0.406]
 IMG_NORM_STD = [0.229, 0.224, 0.225]
@@ -42,13 +42,14 @@ def get_affine_matrix_box(boxes, w2, h2):
     # boxes [left, top, right, bottom]
     width = boxes[:, 2] - boxes[:, 0]    #(N,)
     height = boxes[:, 3] - boxes[:, 1]    #(N,)
-    center = torch.tensor(
-        [(boxes[:, 0] + boxes[:, 2]) / 2.0, (boxes[:, 1] + boxes[:, 3]) / 2.0]
-    ).T    #(N,2)
+    center = torch.tensor([(boxes[:, 0] + boxes[:, 2]) / 2.0,
+                           (boxes[:, 1] + boxes[:, 3]) / 2.0]).T    #(N,2)
     scale = torch.min(torch.tensor([w2 / width, h2 / height]),
                       dim=0)[0].unsqueeze(1).repeat(1, 2) * 0.9    #(N,2)
-    transl = torch.cat([w2 / 2.0 - center[:, 0:1], h2 / 2.0 - center[:, 1:2]], dim=1)   #(N,2)
-    M = get_affine_matrix2d(transl, center, scale, angle=torch.tensor([0.,]*transl.shape[0]))
+    transl = torch.cat([w2 / 2.0 - center[:, 0:1], h2 / 2.0 - center[:, 1:2]], dim=1)    #(N,2)
+    M = get_affine_matrix2d(transl, center, scale, angle=torch.tensor([
+        0.,
+    ] * transl.shape[0]))
 
     return M
 
@@ -56,12 +57,12 @@ def get_affine_matrix_box(boxes, w2, h2):
 def load_img(img_file):
 
     if img_file.endswith("exr"):
-        img = cv2.imread(img_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)  
-    else :
+        img = cv2.imread(img_file, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+    else:
         img = cv2.imread(img_file, cv2.IMREAD_UNCHANGED)
 
     # considering non 8-bit image
-    if img.dtype != np.uint8 :
+    if img.dtype != np.uint8:
         img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
     if len(img.shape) == 2:
@@ -149,8 +150,8 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
         top_score = predictions["scores"][predictions["labels"] == 1].max()
         human_ids = torch.where(predictions["scores"] == top_score)[0]
     else:
-        human_ids = torch.logical_and(predictions["labels"] == 1,
-                                      predictions["scores"] > 0.9).nonzero().squeeze(1)
+        human_ids = torch.logical_and(predictions["labels"] == 1, predictions["scores"]
+                                      > 0.9).nonzero().squeeze(1)
 
     boxes = predictions["boxes"][human_ids, :].detach().cpu().numpy()
     masks = predictions["masks"][human_ids, :, :].permute(0, 2, 3, 1).detach().cpu().numpy()
@@ -167,11 +168,8 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
 
     #print("M_square", M_square, "M_crop": M_crop)
     uncrop_param = {
-        "ori_shape": [in_height, in_width],
-        "box_shape": [input_res, input_res],
-        "square_shape": [tgt_res, tgt_res],
-        "M_square": M_square,
-        "M_crop": M_crop
+        "ori_shape": [in_height, in_width], "box_shape": [input_res, input_res], "square_shape":
+        [tgt_res, tgt_res], "M_square": M_square, "M_crop": M_crop
     }
 
     for idx in range(len(boxes)):
@@ -182,11 +180,11 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
         else:
             mask_detection = masks[0] * 0.
 
-        img_square_rgba = torch.cat(
-            [img_square.squeeze(0).permute(1, 2, 0),
-             torch.tensor(mask_detection < 0.4) * 255],
-            dim=2
-        )
+        img_square_rgba = torch.cat([
+            img_square.squeeze(0).permute(1, 2, 0),
+            torch.tensor(mask_detection < 0.4) * 255
+        ],
+                                    dim=2)
         img_crop_tgt_res = warp_affine(
             img_square_rgba.unsqueeze(0).permute(0, 3, 1, 2),
             M_crop_tgt_res[idx:idx + 1, :2], (tgt_res, ) * 2,
@@ -197,19 +195,29 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
 
         # get accurate person segmentation mask
         # img_rembg = remove(img_crop, post_process_mask=True, session=new_session("u2net"))
-        img_mask = (get_seg_mask_MODNet(img_crop_tgt_res, modnet=modnet)[0,0, :, :, None].detach().cpu().numpy() > 0.5).astype(np.float32)
-        img_rembg_highres = np.concatenate([img_crop_tgt_res[:, :, :3], (img_mask*255).astype(np.uint8)], axis=-1)
+        img_mask = (
+            get_seg_mask_MODNet(img_crop_tgt_res, modnet=modnet)[0, 0, :, :,
+                                                                 None].detach().cpu().numpy() > 0.5
+        ).astype(np.float32)
+        img_rembg_highres = np.concatenate([
+            img_crop_tgt_res[:, :, :3], (img_mask * 255).astype(np.uint8)
+        ],
+                                           axis=-1)
 
         mean_icon = std_icon = (0.5, 0.5, 0.5)
         img_np = (img_rembg_highres[..., :3] * img_mask).astype(np.uint8)
-        
 
-        img_mask_512 = (F.interpolate(torch.tensor(img_mask).permute(2, 0, 1).unsqueeze(0), size=512, mode='bicubic', align_corners=True)[0][0] > 0.5)
-        img_icon = transform_to_tensor(512, mean_icon, std_icon)(
-            Image.fromarray(img_np)
-        ) * img_mask_512.unsqueeze(0)
-        img_hps = transform_to_tensor(224, IMG_NORM_MEAN,
-                                      IMG_NORM_STD)(Image.fromarray(img_np))
+        img_mask_512 = (
+            F.interpolate(
+                torch.tensor(img_mask).permute(2, 0, 1).unsqueeze(0),
+                size=512,
+                mode='bicubic',
+                align_corners=True
+            )[0][0] > 0.5
+        )
+        img_icon = transform_to_tensor(512, mean_icon, std_icon)(Image.fromarray(img_np)
+                                                                ) * img_mask_512.unsqueeze(0)
+        img_hps = transform_to_tensor(224, IMG_NORM_MEAN, IMG_NORM_STD)(Image.fromarray(img_np))
         landmarks = get_keypoints(img_np)
 
         # get hands visibility
@@ -219,7 +227,6 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
         if landmarks['rhand'][:, -1].mean() == 0.:
             hands_visibility[1] = False
         hands_visibility_lst.append(hands_visibility)
-
 
         img_crop_lst.append(torch.tensor(img_rembg_highres).permute(2, 0, 1) / 255.0)
         img_icon_lst.append(img_icon)
@@ -247,7 +254,6 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
         "landmark": torch.stack(landmark_lst),    #[N, 33, 4]
         "hands_visibility": hands_visibility_lst,
     }
-
 
     return return_dict
 
@@ -301,6 +307,7 @@ def unwrap(image, uncrop_param, idx):
 
     return img_ori
 
+
 def load_MODNet(weight_path):
     modnet = MODNet(backbone_pretrained=False).cuda()
     modnet = modnet.cuda()
@@ -310,16 +317,15 @@ def load_MODNet(weight_path):
     modnet.eval()
     return modnet
 
+
 def get_seg_mask_MODNet(im, modnet):
     ref_size = 1024
 
     # define image to tensor transform
-    im_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ]
-    )
+    im_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
     # unify image channels to 3
     im = np.asarray(im)
     if len(im.shape) == 2:

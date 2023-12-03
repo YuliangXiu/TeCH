@@ -1,12 +1,13 @@
-import bpy
-import sys, os
+import os
+import sys
 from math import radians
+
+import bpy
 import mathutils
-import bmesh
 
 print(sys.exec_prefix)
-from tqdm import tqdm
 import numpy as np
+from tqdm import tqdm
 
 ##################################################
 # Globals

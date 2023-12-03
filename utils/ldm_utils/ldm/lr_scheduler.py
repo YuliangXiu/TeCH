@@ -5,7 +5,9 @@ class LambdaWarmUpCosineScheduler:
     """
     note: use with a base_lr of 1.0
     """
-    def __init__(self, warm_up_steps, lr_min, lr_max, lr_start, max_decay_steps, verbosity_interval=0):
+    def __init__(
+        self, warm_up_steps, lr_min, lr_max, lr_start, max_decay_steps, verbosity_interval=0
+    ):
         self.lr_warm_up_steps = warm_up_steps
         self.lr_start = lr_start
         self.lr_min = lr_min
@@ -16,7 +18,8 @@ class LambdaWarmUpCosineScheduler:
 
     def schedule(self, n, **kwargs):
         if self.verbosity_interval > 0:
-            if n % self.verbosity_interval == 0: print(f"current step: {n}, recent lr-multiplier: {self.last_lr}")
+            if n % self.verbosity_interval == 0:
+                print(f"current step: {n}, recent lr-multiplier: {self.last_lr}")
         if n < self.lr_warm_up_steps:
             lr = (self.lr_max - self.lr_start) / self.lr_warm_up_steps * n + self.lr_start
             self.last_lr = lr
@@ -24,13 +27,12 @@ class LambdaWarmUpCosineScheduler:
         else:
             t = (n - self.lr_warm_up_steps) / (self.lr_max_decay_steps - self.lr_warm_up_steps)
             t = min(t, 1.0)
-            lr = self.lr_min + 0.5 * (self.lr_max - self.lr_min) * (
-                    1 + np.cos(t * np.pi))
+            lr = self.lr_min + 0.5 * (self.lr_max - self.lr_min) * (1 + np.cos(t * np.pi))
             self.last_lr = lr
             return lr
 
     def __call__(self, n, **kwargs):
-        return self.schedule(n,**kwargs)
+        return self.schedule(n, **kwargs)
 
 
 class LambdaWarmUpCosineScheduler2:
@@ -60,17 +62,22 @@ class LambdaWarmUpCosineScheduler2:
         cycle = self.find_in_interval(n)
         n = n - self.cum_cycles[cycle]
         if self.verbosity_interval > 0:
-            if n % self.verbosity_interval == 0: print(f"current step: {n}, recent lr-multiplier: {self.last_f}, "
-                                                       f"current cycle {cycle}")
+            if n % self.verbosity_interval == 0:
+                print(
+                    f"current step: {n}, recent lr-multiplier: {self.last_f}, "
+                    f"current cycle {cycle}"
+                )
         if n < self.lr_warm_up_steps[cycle]:
-            f = (self.f_max[cycle] - self.f_start[cycle]) / self.lr_warm_up_steps[cycle] * n + self.f_start[cycle]
+            f = (self.f_max[cycle] -
+                 self.f_start[cycle]) / self.lr_warm_up_steps[cycle] * n + self.f_start[cycle]
             self.last_f = f
             return f
         else:
-            t = (n - self.lr_warm_up_steps[cycle]) / (self.cycle_lengths[cycle] - self.lr_warm_up_steps[cycle])
+            t = (n - self.lr_warm_up_steps[cycle]
+                ) / (self.cycle_lengths[cycle] - self.lr_warm_up_steps[cycle])
             t = min(t, 1.0)
-            f = self.f_min[cycle] + 0.5 * (self.f_max[cycle] - self.f_min[cycle]) * (
-                    1 + np.cos(t * np.pi))
+            f = self.f_min[cycle] + 0.5 * (self.f_max[cycle] -
+                                           self.f_min[cycle]) * (1 + np.cos(t * np.pi))
             self.last_f = f
             return f
 
@@ -79,20 +86,24 @@ class LambdaWarmUpCosineScheduler2:
 
 
 class LambdaLinearScheduler(LambdaWarmUpCosineScheduler2):
-
     def schedule(self, n, **kwargs):
         cycle = self.find_in_interval(n)
         n = n - self.cum_cycles[cycle]
         if self.verbosity_interval > 0:
-            if n % self.verbosity_interval == 0: print(f"current step: {n}, recent lr-multiplier: {self.last_f}, "
-                                                       f"current cycle {cycle}")
+            if n % self.verbosity_interval == 0:
+                print(
+                    f"current step: {n}, recent lr-multiplier: {self.last_f}, "
+                    f"current cycle {cycle}"
+                )
 
         if n < self.lr_warm_up_steps[cycle]:
-            f = (self.f_max[cycle] - self.f_start[cycle]) / self.lr_warm_up_steps[cycle] * n + self.f_start[cycle]
+            f = (self.f_max[cycle] -
+                 self.f_start[cycle]) / self.lr_warm_up_steps[cycle] * n + self.f_start[cycle]
             self.last_f = f
             return f
         else:
-            f = self.f_min[cycle] + (self.f_max[cycle] - self.f_min[cycle]) * (self.cycle_lengths[cycle] - n) / (self.cycle_lengths[cycle])
+            f = self.f_min[cycle] + (self.f_max[cycle] -
+                                     self.f_min[cycle]) * (self.cycle_lengths[cycle] -
+                                                           n) / (self.cycle_lengths[cycle])
             self.last_f = f
             return f
-

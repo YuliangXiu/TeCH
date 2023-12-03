@@ -1,18 +1,22 @@
 """
 Default config for PIXIE
 """
-from yacs.config import CfgNode as CN
 import argparse
-import yaml
 import os
+
+from yacs.config import CfgNode as CN
 
 cfg = CN()
 
-abs_pixie_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", '..', '..', 'data'))
+abs_pixie_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", '..', '..', 'data')
+)
 cfg.pixie_dir = abs_pixie_dir
 cfg.device = "cuda"
 cfg.device_id = "0"
-cfg.pretrained_modelpath = os.path.join(cfg.pixie_dir, "body_data/HPS/pixie_data", "pixie_model.tar")
+cfg.pretrained_modelpath = os.path.join(
+    cfg.pixie_dir, "body_data/HPS/pixie_data", "pixie_model.tar"
+)
 # smplx parameter settings
 cfg.params = CN()
 cfg.params.body_list = ["body_cam", "global_pose", "partbody_pose", "neck_pose"]
@@ -40,11 +44,15 @@ cfg.model.topology_smplx_hand_path = os.path.join(
 cfg.model.smplx_model_path = os.path.join(
     cfg.pixie_dir, "body_data/HPS/pixie_data", "SMPLX_NEUTRAL_2020.npz"
 )
-cfg.model.face_mask_path = os.path.join(cfg.pixie_dir, "body_data/HPS/pixie_data", "uv_face_mask.png")
+cfg.model.face_mask_path = os.path.join(
+    cfg.pixie_dir, "body_data/HPS/pixie_data", "uv_face_mask.png"
+)
 cfg.model.face_eye_mask_path = os.path.join(
     cfg.pixie_dir, "body_data/HPS/pixie_data", "uv_face_eye_mask.png"
 )
-cfg.model.tex_path = os.path.join(cfg.pixie_dir, "body_data/HPS/pixie_data", "FLAME_albedo_from_BFM.npz")
+cfg.model.tex_path = os.path.join(
+    cfg.pixie_dir, "body_data/HPS/pixie_data", "FLAME_albedo_from_BFM.npz"
+)
 cfg.model.extra_joint_path = os.path.join(
     cfg.pixie_dir, "body_data/HPS/pixie_data", "smplx_extra_joints.yaml"
 )

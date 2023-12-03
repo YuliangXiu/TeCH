@@ -1,11 +1,11 @@
 import os
+import random
+
 import numpy as np
 import PIL
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-
-import random
 
 training_templates_smallest = [
     'photo of a sks {}',
@@ -130,56 +130,91 @@ imagenet_dual_templates_small = [
 ]
 
 per_img_token_list = [
-    'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ', 'ק', 'ר', 'ש', 'ת',
+    'א',
+    'ב',
+    'ג',
+    'ד',
+    'ה',
+    'ו',
+    'ז',
+    'ח',
+    'ט',
+    'י',
+    'כ',
+    'ל',
+    'מ',
+    'נ',
+    'ס',
+    'ע',
+    'פ',
+    'צ',
+    'ק',
+    'ר',
+    'ש',
+    'ת',
 ]
 
+
 class PersonalizedBase(Dataset):
-    def __init__(self,
-                 data_root=None,
-                 image_paths=None,
-                 bg_root=None,
-                 size=None,
-                 repeats=100,
-                 interpolation="bicubic",
-                 flip_p=0.5,
-                 set="train",
-                 placeholder_token="dog",
-                 per_image_tokens=False,
-                 center_crop=False,
-                 mixing_prob=0.25,
-                 coarse_class_text=None,
-                 reg = False
-                 ):
+    def __init__(
+        self,
+        data_root=None,
+        image_paths=None,
+        bg_root=None,
+        size=None,
+        repeats=100,
+        interpolation="bicubic",
+        flip_p=0.5,
+        set="train",
+        placeholder_token="dog",
+        per_image_tokens=False,
+        center_crop=False,
+        mixing_prob=0.25,
+        coarse_class_text=None,
+        reg=False
+    ):
         if data_root is not None:
             self.data_root = data_root
-            self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
+            self.image_paths = [
+                os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)
+            ]
         else:
             assert image_paths is not None
             self.image_paths = image_paths
         input_images = [PIL.Image.open(f) for f in self.image_paths]
         if bg_root is not None:
-            bg_images = [PIL.Image.open(os.path.join(bg_root, f)).convert('RGB') for f in os.listdir(bg_root)]
+            bg_images = [
+                PIL.Image.open(os.path.join(bg_root, f)).convert('RGB')
+                for f in os.listdir(bg_root)
+            ]
             self.train_images = []
             for image in input_images:
                 for bg in bg_images:
                     img_np = np.array(image)
                     assert img_np.shape[-1] == 4, "image shape {}".format(img_np.shape)
                     bg = np.array(bg.resize(image.size))
-                    img_np[..., :3] = ((img_np[..., :3] * (img_np[..., 3:]/255)) + bg * (1. - img_np[..., 3:]/255)).astype(np.uint8)
-                    self.train_images.append(Image.fromarray(img_np[..., :3]).convert('RGB').resize((512, 512)))
+                    img_np[..., :3] = ((img_np[..., :3] * (img_np[..., 3:] / 255)) + bg *
+                                       (1. - img_np[..., 3:] / 255)).astype(np.uint8)
+                    self.train_images.append(
+                        Image.fromarray(img_np[..., :3]).convert('RGB').resize((512, 512))
+                    )
             train_image_paths = []
-            os.makedirs(os.path.join('/'.join(data_root.split('/')[:-2]), 'augmented'), exist_ok=True)
+            os.makedirs(
+                os.path.join('/'.join(data_root.split('/')[:-2]), 'augmented'), exist_ok=True
+            )
             for i, img in enumerate(self.train_images):
-                save_path = os.path.join('/'.join(data_root.split('/')[:-2]), 'augmented', f"{i}.png")
+                save_path = os.path.join(
+                    '/'.join(data_root.split('/')[:-2]), 'augmented', f"{i}.png"
+                )
                 img.save(save_path)
                 train_image_paths.append(save_path)
         else:
             self.image_paths = image_paths
-            self.train_images=input_images
+            self.train_images = input_images
 
         # self._length = len(self.image_paths)
         self.num_images = len(self.train_images)
-        self._length = self.num_images 
+        self._length = self.num_images
 
         self.placeholder_token = placeholder_token
 
@@ -190,17 +225,20 @@ class PersonalizedBase(Dataset):
         self.coarse_class_text = coarse_class_text
 
         if per_image_tokens:
-            assert self.num_images < len(per_img_token_list), f"Can't use per-image tokens when the training set contains more than {len(per_img_token_list)} tokens. To enable larger sets, add more tokens to 'per_img_token_list'."
+            assert self.num_images < len(
+                per_img_token_list
+            ), f"Can't use per-image tokens when the training set contains more than {len(per_img_token_list)} tokens. To enable larger sets, add more tokens to 'per_img_token_list'."
 
         if set == "train":
             self._length = self.num_images * repeats
 
         self.size = size
-        self.interpolation = {"linear": PIL.Image.BILINEAR,
-                              "bilinear": PIL.Image.BILINEAR,
-                              "bicubic": PIL.Image.BICUBIC,
-                              "lanczos": PIL.Image.LANCZOS,
-                              }[interpolation]
+        self.interpolation = {
+            "linear": PIL.Image.BILINEAR,
+            "bilinear": PIL.Image.BILINEAR,
+            "bicubic": PIL.Image.BICUBIC,
+            "lanczos": PIL.Image.LANCZOS,
+        }[interpolation]
         self.flip = transforms.RandomHorizontalFlip(p=flip_p)
         self.reg = reg
 
@@ -222,17 +260,16 @@ class PersonalizedBase(Dataset):
             text = random.choice(training_templates_smallest).format(placeholder_string)
         else:
             text = random.choice(reg_templates_smallest).format(placeholder_string)
-            
+
         example["caption"] = text
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
-        
+
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
             h, w, = img.shape[0], img.shape[1]
-            img = img[(h - crop) // 2:(h + crop) // 2,
-                (w - crop) // 2:(w + crop) // 2]
+            img = img[(h - crop) // 2:(h + crop) // 2, (w - crop) // 2:(w + crop) // 2]
 
         image = Image.fromarray(img)
         if self.size is not None:

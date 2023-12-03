@@ -19,21 +19,20 @@ import os
 import os.path as osp
 
 import _pickle as cPickle
+import lib.smplx as smplx
 import numpy as np
 import open3d as o3d
 import torch
 import torch.nn.functional as F
 import torchvision
 import trimesh
+from kaolin.metrics.trianglemesh import point_to_mesh_distance
+from lib.common.render_utils import Pytorch3dRasterizer, face_vertices
 from PIL import Image, ImageDraw, ImageFont
 from pytorch3d.loss import mesh_laplacian_smoothing, mesh_normal_consistency
 from pytorch3d.renderer.mesh import rasterize_meshes
 from pytorch3d.structures import Meshes
 from scipy.spatial import cKDTree
-
-import lib.smplx as smplx
-from lib.common.render_utils import Pytorch3dRasterizer, face_vertices
-from kaolin.metrics.trianglemesh import point_to_mesh_distance
 
 
 class Format:
@@ -44,7 +43,9 @@ class Format:
 class SMPLX:
     def __init__(self):
 
-        self.current_dir = osp.join(osp.dirname(__file__), "../../../../data/body_data/smpl_related")
+        self.current_dir = osp.join(
+            osp.dirname(__file__), "../../../../data/body_data/smpl_related"
+        )
 
         self.smpl_verts_path = osp.join(self.current_dir, "smpl_data/smpl_verts.npy")
         self.smpl_faces_path = osp.join(self.current_dir, "smpl_data/smpl_faces.npy")
@@ -80,12 +81,13 @@ class SMPLX:
             self.smpl_vert_seg["leftHand"], self.smpl_vert_seg["leftHandIndex1"]
         ])
         self.smpl_mano_vid_dict = dict(
-        right_hand=np.concatenate([
-            self.smpl_vert_seg["rightHand"], self.smpl_vert_seg["rightHandIndex1"]
+            right_hand=np.concatenate([
+                self.smpl_vert_seg["rightHand"], self.smpl_vert_seg["rightHandIndex1"]
             ]),
-        left_hand=np.concatenate([
-            self.smpl_vert_seg["leftHand"], self.smpl_vert_seg["leftHandIndex1"]
-        ]))
+            left_hand=np.concatenate([
+                self.smpl_vert_seg["leftHand"], self.smpl_vert_seg["leftHandIndex1"]
+            ])
+        )
 
         self.smplx_eyeball_fid_mask = np.load(self.smplx_eyeball_fid_path)
         self.smplx_mouth_fid = np.load(self.smplx_fill_mouth_fid_path)
@@ -556,6 +558,7 @@ def projection(points, calib):
         calib = calib.cpu() if torch.is_tensor(calib) else calib
         return np.matmul(calib[:3, :3], points.T).T + calib[:3, 3]
 
+
 def projection_inv(points, calib):
     if torch.is_tensor(calib):
         calib = calib.cpu().numpy()
@@ -567,6 +570,7 @@ def projection_inv(points, calib):
         return torch.mm(R_inv, (points - calib[:3, 3]).T).T
     else:
         return np.matmul(R_inv, (points - calib[:3, 3]).T).T
+
 
 def load_calib(calib_path):
     calib_data = np.loadtxt(calib_path, dtype=float)
@@ -858,6 +862,7 @@ def barycentric_coordinates_of_projection(points, vertices):
     # p_n = v0*weights[:,0:1] + v1*weights[:,1:2] + v2*weights[:,2:3]
     return weights
 
+
 def query_barycentric_weights(points, vertices, faces):
     chunk_size = 10000
     n_points = points.shape[1]
@@ -866,7 +871,7 @@ def query_barycentric_weights(points, vertices, faces):
     bary_weights_all = []
     triangles = face_vertices(vertices, faces)
     for i in range(0, n_points, chunk_size):
-        p_chunk = points[:, i:i+chunk_size]
+        p_chunk = points[:, i:i + chunk_size]
         residues, pts_ind, _ = point_to_mesh_distance(p_chunk.cuda(), triangles.cuda())
         pts_ind = pts_ind.cpu()
         closest_triangles = torch.gather(
@@ -878,7 +883,10 @@ def query_barycentric_weights(points, vertices, faces):
     pts_ind_all = torch.cat(pts_ind_all, dim=1)
     bary_weights_all = torch.cat(bary_weights_all, dim=0)
     #print(pts_ind_all.shape, bary_weights_all.shape)
-    return bary_weights_all.reshape(points.shape).cpu().numpy(), pts_ind_all.cpu().numpy().astype(np.int32)
+    return bary_weights_all.reshape(points.shape).cpu().numpy(), pts_ind_all.cpu().numpy().astype(
+        np.int32
+    )
+
 
 def update_vertices(mesh, mask, inverse=None):
     """
@@ -899,8 +907,7 @@ def update_vertices(mesh, mask, inverse=None):
     # make sure mask is a numpy array
     mask = np.asanyarray(mask)
 
-    if ((mask.dtype.name == 'bool' and mask.all()) or
-            len(mask) == 0 or mesh.is_empty):
+    if ((mask.dtype.name == 'bool' and mask.all()) or len(mask) == 0 or mesh.is_empty):
         # mask doesn't remove any vertices so exit early
         return
 
