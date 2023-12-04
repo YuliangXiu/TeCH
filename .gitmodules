@@ -6,3 +6,7 @@
 	path = thirdparties/nvdiffrast
 	url = https://github.com/NVlabs/nvdiffrast.git
 	ignore = dirty
+[submodule "thirdparties/GroundingDINO"]
+	path = thirdparties/GroundingDINO
+	url = https://github.com/IDEA-Research/GroundingDINO.git
+	ignore = dirty

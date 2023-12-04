@@ -73,7 +73,7 @@ class StableDiffusion(nn.Module):
         else:
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
         self.clip_model, _ = clip.load(
-            "ViT-L/14", device=self.device, jit=False, download_root='clip_ckpts'
+            "ViT-L/14", device=self.device, jit=False, download_root='data/clip_ckpts'
         )
         self.clip_model = self.clip_model.eval().requires_grad_(False).to(self.device)
         self.clip_preprocess = T.Compose([

@@ -30,6 +30,8 @@ python setup.py install
 
 cd ../../thirdparties/nvdiffrast
 python setup.py install
+
+bash scripts/install_dino_sam.sh
 ```
 
 4. Download necessary data for body models: `bash scripts/download_body_data.sh`

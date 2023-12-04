@@ -11,6 +11,7 @@ logs
 *.pt
 *.sub
 *.txt
+OPENAI_API_KEY
 cores/lib/freqencoder/build
 cores/lib/gridencoder/build
 cores/lib/freqencoder/dist

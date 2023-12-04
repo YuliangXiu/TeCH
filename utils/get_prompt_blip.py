@@ -1,8 +1,15 @@
 import argparse
+import os
 
 import numpy as np
 import torch
 from PIL import Image
+from transformers import (
+    AutoProcessor,
+    BlipForQuestionAnswering,
+    SegformerImageProcessor,
+    SegformerForSemanticSegmentation,
+)
 
 mylabel2ids = {
     'hat': [1],
@@ -30,46 +37,40 @@ def is_necessary(g, garments):
     return False
 
 
+def ask(q, img_path):
+    print('Question: {}'.format(q))
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    blip_model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base")
+    blip_processor = AutoProcessor.from_pretrained("Salesforce/blip-vqa-base")
+    blip_model.to(device)
+
+    inputs = blip_processor(
+        images=[Image.open(img_path)],
+        text=q,
+        padding=True,
+        return_tensors="pt",
+    ).to(device, torch.float16)
+
+    generated_ids = blip_model.generate(**inputs, max_new_tokens=5)
+    answer = blip_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    print('Answer:', answer)
+    return answer
+
+
+def clean_prompt(prompt):
+    while ('  ' in prompt):
+        prompt = prompt.replace('  ', ' ')
+    while (' ,' in prompt):
+        prompt = prompt.replace(' ,', ',')
+    return prompt
+
+
 def get_prompt_segments(img_path, feature_extractor, model):
     image = open(img_path, 'rb')
 
-    def ask(q):
-        print('Question: {}'.format(q))
-
-        # answer = replicate.run(
-        #     "salesforce/blip:2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746",
-        #     input={
-        #         "image": image,
-        #         "task": "visual_question_answering",
-        #         "question": q
-        #     }).replace('Answer: ', '')
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        blip_model = BlipForQuestionAnswering.from_pretrained("Salesforce/blip-vqa-base")
-        blip_processor = AutoProcessor.from_pretrained("Salesforce/blip-vqa-base")
-        blip_model.to(device)
-
-        inputs = blip_processor(
-            images=[Image.open(img_path)],
-            text=q,
-            padding=True,
-            return_tensors="pt",
-        ).to(device, torch.float16)
-
-        generated_ids = blip_model.generate(**inputs, max_new_tokens=5)
-        answer = blip_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-        print('Answer:', answer)
-        return answer
-
-    def clean_prompt(prompt):
-        while ('  ' in prompt):
-            prompt = prompt.replace('  ', ' ')
-        while (' ,' in prompt):
-            prompt = prompt.replace(' ,', ',')
-        return prompt
-
-    gender = ask('Is this person a man or a woman')
+    gender = ask('Is this person a man or a woman', img_path)
     if 'woman' in gender:
         gender = 'woman'
     elif 'man' in gender:
@@ -78,29 +79,30 @@ def get_prompt_segments(img_path, feature_extractor, model):
         gender = 'person'
     prompt = 'a sks {}'.format(gender)
     garments = get_garments(image, feature_extractor, model)
-    haircolor = ask('What is the hair color of this person?')
-    hairstyle = ask('What is the hair style of this person?')
-    face = ask('Describe the facial appearance of this person.')
+    haircolor = ask('What is the hair color of this person?', img_path)
+    hairstyle = ask('What is the hair style of this person?', img_path)
+    face = ask('Describe the facial appearance of this person.', img_path)
     prompt = prompt + ', {} {} hair, {}'.format(haircolor, hairstyle, face)
     for g in garments:
-        has_g = is_necessary(g, garments) or ('yes' in ask('Is this person wearing {}?'.format(g)))
+        has_g = is_necessary(g, garments
+                            ) or ('yes' in ask('Is this person wearing {}?'.format(g), img_path))
         if has_g:
-            kind = ask('What {} is the person wearing?'.format(g))
+            kind = ask('What {} is the person wearing?'.format(g), img_path)
             if (g in kind) or (g == 'upper-clothes'):
                 g = ''
-            color = ask('What is the color of the {} {}?'.format(kind, g))
-            style = ask('What is the style of the {} {}?'.format(kind, g))
+            color = ask('What is the color of the {} {}?'.format(kind, g), img_path)
+            style = ask('What is the style of the {} {}?'.format(kind, g), img_path)
             if style in kind or style in g:
                 style = ''
             if color in kind or color in g:
                 color = ''
             prompt = prompt + ', sks {} {} {} {}'.format(color, style, kind, g)
-    has_beard = ask('Do this person has facial hair?')
+    has_beard = ask('Do this person has facial hair?', img_path)
     if 'yes' in has_beard:
-        beard = ask('How is the facial hair of this person?')
+        beard = ask('How is the facial hair of this person?', img_path)
         if beard != 'none':
             prompt = prompt + ', {} beard'.format(beard)
-    pose = ask('Describe the pose of this person.')
+    pose = ask('Describe the pose of this person.', img_path)
     prompt = prompt + ', {}'.format(pose)
     prompt = clean_prompt(prompt)
     return prompt, gender
@@ -132,17 +134,23 @@ def get_garments(img_path, feature_extractor, model):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--img-path', type=str, required=True, help="input image")
-    parser.add_argument('--out-path', type=str, required=True, help="output path")
+    parser.add_argument('--in_dir', type=str, required=True, help="input image")
+    parser.add_argument('--out_path', type=str, required=True, help="output path")
     opt = parser.parse_args()
-    print(f'[INFO] Generating text prompt for {opt.img_path}...')
+
+    print(f'[INFO] Generating text prompt for {opt.in_dir}...')
+    
     model = SegformerForSemanticSegmentation.from_pretrained(
         "matei-dorian/segformer-b5-finetuned-human-parsing"
     ).cuda()
-    feature_extractor = SegformerFeatureExtractor.from_pretrained(
+    feature_extractor = SegformerImageProcessor.from_pretrained(
         "matei-dorian/segformer-b5-finetuned-human-parsing"
     )
-    prompt, gender = get_prompt_segments(opt.img_path, feature_extractor, model)
-    print(f'[INFO] generated prompt: {prompt}, estimated category: {gender}')
+
     with open(opt.out_path, 'w') as f:
-        f.write(f'{prompt}|{gender}')
+        for file in os.listdir(opt.in_dir):
+            if file.endswith(".png"):
+                img_path = os.path.join(opt.in_dir, file)
+                prompt, gender = get_prompt_segments(img_path, feature_extractor, model)
+                print(f'[INFO] generated prompt: {prompt}, estimated category: {gender}')
+                f.write(f'{prompt}|{gender} \n')

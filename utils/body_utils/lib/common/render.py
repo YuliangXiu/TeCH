@@ -24,6 +24,21 @@ import torch
 from lib.common.imutils import blend_rgb_norm
 from lib.dataset.mesh_util import get_visibility
 from PIL import ImageColor
+from pytorch3d.renderer import (
+    AlphaCompositor,
+    BlendParams,
+    FoVOrthographicCameras,
+    MeshRasterizer,
+    MeshRenderer,
+    PointsRasterizationSettings,
+    PointsRasterizer,
+    PointsRenderer,
+    RasterizationSettings,
+    SoftSilhouetteShader,
+    TexturesVertex,
+    blending,
+    look_at_view_transform,
+)
 from pytorch3d.renderer.mesh import TexturesUV, TexturesVertex
 from pytorch3d.structures import Meshes
 from termcolor import colored

@@ -46,7 +46,7 @@ Please follow the [Installation Instruction](docs/install.md) to setup all the r
 
 ## Getting Started
 
-We provide a running script at `scripts/run.sh`. Before getting started, you need to set your own environment variables of `CUDA_HOME` and `REPLICATE_API_TOKEN`([get your token here](https://replicate.com/signin?next=/account/api-tokens)) in the script.
+We provide a running script at `scripts/run.sh`. Before getting started, you need to set your own environment variables of `CUDA_HOME`.
 
 After that, you can use TeCH to create a highly detailed clothed human textured mesh from a single image, for example:
 

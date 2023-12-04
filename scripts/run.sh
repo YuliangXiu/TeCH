@@ -1,48 +1,53 @@
 set -x
 
 getenv=True
-source /home/yxiu/miniconda3/bin/activate TeCH   # user-defined
-export HF_HOME="/is/cluster/yxiu/.cache"         # user-defined
-export CUDA_HOME="/is/software/nvidia/cuda-11.7" # user-defined
-export REPLICATE_API_TOKEN=""                    # your replicate token for BLIP API
+source /home/yxiu/miniconda3/bin/activate TeCH                      # user-defined
+export HF_HOME="/is/cluster/yxiu/.cache"                            # user-defined
+export PYTORCH_KERNEL_CACHE_PATH="/is/cluster/yxiu/.cache/torch"    # user-defined
+export CUDA_HOME="/is/software/nvidia/cuda-11.7"                    # user-defined
 export PYOPENGL_PLATFORM="egl"
+export OPENAI_API_KEY=$(cat OPENAI_API_KEY)
 
-export INPUT_FILE=$1
+export INPUT_DIR=$1
 export EXP_DIR=$2
 export SUBJECT_NAME=$(basename $1 | cut -d"." -f1)
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
+# Step 0: Run DINO+SAM
+python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${EXP_DIR}
+
 # Step 1: Preprocess image, get SMPL-X & normal estimation
-python utils/body_utils/preprocess.py --in_path ${INPUT_FILE} --out_dir ${EXP_DIR}
+# mkdir -p ${EXP_DIR}
+# python utils/body_utils/preprocess.py --in_dir ${INPUT_DIR} --out_dir ${EXP_DIR}
 
 # Step 2: Get BLIP prompt and gender, you can also use your own prompt
-python utils/get_prompt_blip.py --img-path ${EXP_DIR}/png/${SUBJECT_NAME}_crop.png --out-path ${EXP_DIR}/prompt.txt
-python cores/get_prompt.py ${EXP_DIR}/png/${SUBJECT_NAME}_crop.png
-export PROMPT=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f1)
-export GENDER=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f2)
+# python utils/get_prompt_blip.py --in_dir ${EXP_DIR}/png --out_path ${EXP_DIR}/prompt.txt
 
-# Step 3: Finetune Dreambooth model (minimal GPU memory requirement: 2x32G)
-rm -rf ${EXP_DIR}/ldm
-python utils/ldm_utils/main.py -t --data_root ${EXP_DIR}/png/ --logdir ${EXP_DIR}/ldm/ \
-    --reg_data_root data/dreambooth_data/class_${GENDER}_images/ \
-    --bg_root data/dreambooth_data/bg_images/ \
-    --class_word ${GENDER} --no-test --gpus 0
+# export PROMPT=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f1)
+# export GENDER=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f2)
 
-# Convert Dreambooth model to diffusers format
-python utils/ldm_utils/convert_ldm_to_diffusers.py \
-    --checkpoint_path ${EXP_DIR}/ldm/_v1-finetune_unfrozen/checkpoints/last.ckpt \
-    --original_config_file utils/ldm_utils/configs/stable-diffusion/v1-inference.yaml \
-    --scheduler_type ddim --image_size 512 --prediction_type epsilon --dump_path ${EXP_DIR}/sd_model
+# # Step 3: Finetune Dreambooth model (minimal GPU memory requirement: 2x32G)
+# rm -rf ${EXP_DIR}/ldm
+# python utils/ldm_utils/main.py -t --data_root ${EXP_DIR}/png/ --logdir ${EXP_DIR}/ldm/ \
+#     --reg_data_root data/dreambooth_data/class_${GENDER}_images/ \
+#     --bg_root data/dreambooth_data/bg_images/ \
+#     --class_word ${GENDER} --no-test --gpus 0
 
-# [Optional] you can delete the original ldm exp dir to save disk memory
-rm -rf ${EXP_DIR}/ldm
+# # Convert Dreambooth model to diffusers format
+# python utils/ldm_utils/convert_ldm_to_diffusers.py \
+#     --checkpoint_path ${EXP_DIR}/ldm/_v1-finetune_unfrozen/checkpoints/last.ckpt \
+#     --original_config_file utils/ldm_utils/configs/stable-diffusion/v1-inference.yaml \
+#     --scheduler_type ddim --image_size 512 --prediction_type epsilon --dump_path ${EXP_DIR}/sd_model
 
-# Step 4: Run geometry stage (Run on a single GPU)
-python cores/main.py --config configs/tech_geometry.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME
-python utils/body_utils/postprocess.py --dir $EXP_DIR/obj --name $SUBJECT_NAME
+# # [Optional] you can delete the original ldm exp dir to save disk memory
+# rm -rf ${EXP_DIR}/ldm
 
-# Step 5: Run texture stage (Run on a single GPU)
-python cores/main.py --config configs/tech_texture.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME
+# # Step 4: Run geometry stage (Run on a single GPU)
+# python cores/main.py --config configs/tech_geometry.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME
+# python utils/body_utils/postprocess.py --dir $EXP_DIR/obj --name $SUBJECT_NAME
 
-# [Optional] export textured mesh with UV map, using atlas for UV unwraping.
-python cores/main.py --config configs/tech_texture_export.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME --test
+# # Step 5: Run texture stage (Run on a single GPU)
+# python cores/main.py --config configs/tech_texture.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME
+
+# # [Optional] export textured mesh with UV map, using atlas for UV unwraping.
+# python cores/main.py --config configs/tech_texture_export.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME --test

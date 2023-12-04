@@ -9,6 +9,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .lbs import (
+    JointsFromVerticesSelector,
+    Struct,
+    find_dynamic_lmk_idx_and_bcoords,
+    lbs,
+    to_np,
+    to_tensor,
+    vertices2landmarks,
+)
+
 # SMPLX
 J14_NAMES = [
     "right_ankle",
