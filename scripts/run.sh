@@ -1,10 +1,6 @@
-set -x
+#!/bin/bash
+source ./scripts/env.sh
 
-getenv=True
-source /home/yxiu/miniconda3/bin/activate TeCH                      # user-defined
-export HF_HOME="/is/cluster/yxiu/.cache"                            # user-defined
-export PYTORCH_KERNEL_CACHE_PATH="/is/cluster/yxiu/.cache/torch"    # user-defined
-export CUDA_HOME="/is/software/nvidia/cuda-11.7"                    # user-defined
 export PYOPENGL_PLATFORM="egl"
 export OPENAI_API_KEY=$(cat OPENAI_API_KEY)
 
@@ -14,7 +10,7 @@ export SUBJECT_NAME=$(basename $1 | cut -d"." -f1)
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 # Step 0: Run DINO+SAM
-python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${EXP_DIR}
+python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${INPUT_DIR}
 
 # Step 1: Preprocess image, get SMPL-X & normal estimation
 # mkdir -p ${EXP_DIR}

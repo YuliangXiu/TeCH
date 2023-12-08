@@ -171,3 +171,5 @@ tags
 # Project
 outputs/
 inputs/
+
+!gpt4v_prompt.txt

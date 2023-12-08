@@ -1,7 +1,5 @@
-# install GroundingDINO
-
-getenv=True
-source /home/yxiu/miniconda3/bin/activate TeCH
+#!/bin/bash
+source ./scripts/env.sh
 
 cd thirdparties/GroundingDINO
 git checkout -q 57535c5a79791cb76e36fdb64975271354f10251

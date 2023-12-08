@@ -20,6 +20,8 @@ import itertools
 import logging
 import math
 import os
+import json
+import glob
 import random
 import warnings
 from pathlib import Path
@@ -106,6 +108,12 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="Pretrained tokenizer name or path if not the same as model_name",
+    )
+    parser.add_argument(
+        "--gender",
+        type=str,
+        default=None,
+        help="Gender of instance data",
     )
     parser.add_argument(
         "--instance_data_dir",
@@ -423,6 +431,15 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
+    with open(os.path.join(args.instance_data_dir, 'gpt4v_response.json'), 'r') as f:
+        gpt4v_response = json.load(f)
+    args.gender = 'man' if gpt4v_response['gender'] in ['man', 'male'] else 'woman'
+    gpt4v_classes = list(gpt4v_response.keys())
+    gpt4v_classes.remove("gender")
+
+    args.num_of_assets = len(gpt4v_classes)
+    args.initializer_tokens = gpt4v_classes
+
     assert len(args.initializer_tokens) == 0 or len(args.initializer_tokens) == args.num_of_assets
     args.max_train_steps = args.phase1_train_steps + args.phase2_train_steps
 
@@ -455,23 +472,27 @@ class DreamBoothDataset(Dataset):
         instance_data_root,
         placeholder_tokens,
         tokenizer,
+        initializer_tokens,
+        num_class_images,
+        gender,
         class_data_root=None,
-        class_prompt=None,
         size=512,
         center_crop=False,
-        num_of_assets=1,
         flip_p=0.5,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.flip_p = flip_p
+        self.gender = gender
 
         self.image_transforms = transforms.Compose([
+            transforms.Resize((self.size, self.size)),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ])
         self.mask_transforms = transforms.Compose([
+            transforms.Resize((self.size, self.size)),
             transforms.ToTensor(),
         ])
 
@@ -479,45 +500,78 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
 
-        self.placeholder_tokens = placeholder_tokens
+        self.placeholder_full = placeholder_tokens
+        self.placeholder_tokens = []
+        self.class_tokens = []
+        self.initializer_tokens = initializer_tokens
+        self.class_data_root = class_data_root
+        self.num_class_images = num_class_images
 
-        instance_img_path = os.path.join(instance_data_root, "img.jpg")
-        self.instance_image = self.image_transforms(Image.open(instance_img_path))
+        instance_img_paths = sorted(glob.glob(f"{instance_data_root}/image/*.png"))
+        self._length = max(len(instance_img_paths), self.num_class_images)
 
+        self.instance_images = [
+            self.image_transforms(Image.open(path))[:3] for path in instance_img_paths
+        ]
         self.instance_masks = []
-        for i in range(num_of_assets):
-            instance_mask_path = os.path.join(instance_data_root, f"mask{i}.png")
-            curr_mask = Image.open(instance_mask_path)
-            curr_mask = self.mask_transforms(curr_mask)[0, None, None, ...]
-            self.instance_masks.append(curr_mask)
-        self.instance_masks = torch.cat(self.instance_masks)
 
-        self._length = 1
+        for i in range(len(instance_img_paths)):
+            instance_mask_paths = glob.glob(f"{instance_data_root}/mask/{i:02d}_*.png")
+            instance_mask = []
+            instance_placeholder_token = []
+            instance_class_tokens = []
+            for instance_mask_path in instance_mask_paths:
+                curr_mask = Image.open(instance_mask_path)
+                curr_mask = self.mask_transforms(curr_mask)[0, None, None, ...]
+                instance_mask.append(curr_mask)
+                curr_token = instance_mask_path.split(".")[0].split("_")[-1]
+                instance_placeholder_token.append(
+                    self.placeholder_full[self.initializer_tokens.index(curr_token)]
+                )
+                instance_class_tokens.append(curr_token)
+            self.instance_masks.append(torch.cat(instance_mask))
+            self.placeholder_tokens.append(instance_placeholder_token)
+            self.class_tokens.append(instance_class_tokens)
 
-        if class_data_root is not None:
-            self.class_data_root = Path(class_data_root)
-            self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = list(self.class_data_root.iterdir())
-            self.num_class_images = len(self.class_images_path)
-            self._length = max(self.num_class_images, self._length)
-            self.class_prompt = class_prompt
+        self.class_images_path = {}
+        if self.class_data_root is not None:
+            for class_name in self.initializer_tokens:
+                class_data_dir = Path(class_data_root) / class_name
+                self.class_images_path[class_name] = list(class_data_dir.iterdir())
         else:
             self.class_data_root = None
 
     def __len__(self):
+
         return self._length
 
     def __getitem__(self, index):
+
         example = {}
+        example_len = len(self.instance_images)
 
-        num_of_tokens = random.randrange(1, len(self.placeholder_tokens) + 1)
-        tokens_ids_to_use = random.sample(range(len(self.placeholder_tokens)), k=num_of_tokens)
-        tokens_to_use = [self.placeholder_tokens[tkn_i] for tkn_i in tokens_ids_to_use]
-        prompt = "a photo of " + " and ".join(tokens_to_use)
+        # instance_masks, instance_images, placeholder_tokens are all lists
+        num_of_tokens = random.randrange(1, len(self.placeholder_tokens[index % example_len]) + 1)
+        tokens_ids_to_use = random.sample(
+            range(len(self.placeholder_tokens[index % example_len])), k=num_of_tokens
+        )
+        tokens_to_use = [
+            self.placeholder_tokens[index % example_len][tkn_i] for tkn_i in tokens_ids_to_use
+        ]
+        classes_to_use = [
+            self.class_tokens[index % example_len][tkn_i] for tkn_i in tokens_ids_to_use
+        ]
 
-        example["instance_images"] = self.instance_image
-        example["instance_masks"] = self.instance_masks[tokens_ids_to_use]
-        example["token_ids"] = torch.tensor(tokens_ids_to_use)
+        prompt = f"a photo of a {self.gender} wearing" + " and ".join([
+            f"{placeholder_token} {class_token}"
+            for (placeholder_token, class_token) in zip(tokens_to_use, classes_to_use)
+        ])
+
+        example["instance_images"] = self.instance_images[index % example_len]
+        example["instance_masks"] = self.instance_masks[index % example_len][tokens_ids_to_use]
+        example["token_ids"] = torch.tensor([
+            self.placeholder_full.index(token) for token in tokens_to_use
+        ])
 
         if random.random() > self.flip_p:
             example["instance_images"] = TF.hflip(example["instance_images"])
@@ -532,12 +586,15 @@ class DreamBoothDataset(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_token = random.choice(classes_to_use)
+            class_image = Image.open(
+                self.class_images_path[class_token][index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompt,
+                f"a photo of a {self.gender} wearing {class_token}",
                 truncation=True,
                 padding="max_length",
                 max_length=self.tokenizer.model_max_length,
@@ -646,58 +703,64 @@ class SpatialDreambooth:
 
         # Generate class images if prior preservation is enabled.
         if self.args.with_prior_preservation:
-            class_images_dir = Path(self.args.class_data_dir)
-            if not class_images_dir.exists():
-                class_images_dir.mkdir(parents=True)
-            cur_class_images = len(list(class_images_dir.iterdir()))
 
-            if cur_class_images < self.args.num_class_images:
-                torch_dtype = (
-                    torch.float16 if self.accelerator.device.type == "cuda" else torch.float32
-                )
-                if self.args.prior_generation_precision == "fp32":
-                    torch_dtype = torch.float32
-                elif self.args.prior_generation_precision == "fp16":
-                    torch_dtype = torch.float16
-                elif self.args.prior_generation_precision == "bf16":
-                    torch_dtype = torch.bfloat16
-                pipeline = DiffusionPipeline.from_pretrained(
-                    self.args.pretrained_model_name_or_path,
-                    torch_dtype=torch_dtype,
-                    safety_checker=None,
-                    revision=self.args.revision,
-                )
-                pipeline.set_progress_bar_config(disable=True)
+            torch_dtype = (
+                torch.float16 if self.accelerator.device.type == "cuda" else torch.float32
+            )
+            if self.args.prior_generation_precision == "fp32":
+                torch_dtype = torch.float32
+            elif self.args.prior_generation_precision == "fp16":
+                torch_dtype = torch.float16
+            elif self.args.prior_generation_precision == "bf16":
+                torch_dtype = torch.bfloat16
+            pipeline = DiffusionPipeline.from_pretrained(
+                self.args.pretrained_model_name_or_path,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+                revision=self.args.revision,
+            )
+            pipeline.set_progress_bar_config(disable=True)
+            pipeline.to(self.accelerator.device)
 
-                num_new_images = self.args.num_class_images - cur_class_images
-                logger.info(f"Number of class images to sample: {num_new_images}.")
+            for class_name in self.args.initializer_tokens:
 
-                sample_dataset = PromptDataset(self.args.class_prompt, num_new_images)
-                sample_dataloader = torch.utils.data.DataLoader(
-                    sample_dataset, batch_size=self.args.sample_batch_size
-                )
+                class_prompt = f"a photo of {self.args.gender} wearing {class_name}"
+                class_images_dir = Path(self.args.class_data_dir) / class_name
 
-                sample_dataloader = self.accelerator.prepare(sample_dataloader)
-                pipeline.to(self.accelerator.device)
+                if not class_images_dir.exists():
+                    class_images_dir.mkdir(parents=True)
+                cur_class_images = len(list(class_images_dir.iterdir()))
 
-                for example in tqdm(
-                    sample_dataloader,
-                    desc="Generating class images",
-                    disable=not self.accelerator.is_local_main_process,
-                ):
-                    images = pipeline(example["prompt"]).images
+                if cur_class_images < self.args.num_class_images:
 
-                    for i, image in enumerate(images):
-                        hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                        image_filename = (
-                            class_images_dir /
-                            f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                        )
-                        image.save(image_filename)
+                    num_new_images = self.args.num_class_images - cur_class_images
+                    logger.info(f"Number of class images to sample: {num_new_images}.")
 
-                del pipeline
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                    sample_dataset = PromptDataset(class_prompt, num_new_images)
+                    sample_dataloader = torch.utils.data.DataLoader(
+                        sample_dataset, batch_size=self.args.sample_batch_size
+                    )
+
+                    sample_dataloader = self.accelerator.prepare(sample_dataloader)
+
+                    for example in tqdm(
+                        sample_dataloader,
+                        desc="Generating class images",
+                        disable=not self.accelerator.is_local_main_process,
+                    ):
+                        images = pipeline(example["prompt"]).images
+
+                        for i, image in enumerate(images):
+                            hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                            image_filename = (
+                                class_images_dir /
+                                f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                            )
+                            image.save(image_filename)
+
+            del pipeline
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         # Handle the repository creation
         if self.accelerator.is_main_process:
@@ -829,13 +892,17 @@ class SpatialDreambooth:
         train_dataset = DreamBoothDataset(
             instance_data_root=self.args.instance_data_dir,
             placeholder_tokens=self.placeholder_tokens,
+            initializer_tokens=self.args.initializer_tokens,
+            num_class_images=self.args.num_class_images,
+            gender=self.args.gender,
             class_data_root=self.args.class_data_dir if self.args.with_prior_preservation else None,
-            class_prompt=self.args.class_prompt,
             tokenizer=self.tokenizer,
             size=self.args.resolution,
             center_crop=self.args.center_crop,
-            num_of_assets=self.args.num_of_assets,
         )
+
+        logger.info(f"Placeholder Tokens: {self.placeholder_tokens}")
+        logger.info(f"Initializer Tokens: {self.args.initializer_tokens}")
 
         train_dataloader = torch.utils.data.DataLoader(
             train_dataset,
@@ -1127,6 +1194,7 @@ class SpatialDreambooth:
                                     batch["input_ids"][curr_cond_batch_idx] ==
                                     curr_placeholder_token_id
                                 ).nonzero().item())
+
                                 asset_attn_mask = agg_attn[..., asset_idx]
                                 asset_attn_mask = (asset_attn_mask / asset_attn_mask.max())
                                 attn_loss += F.mse_loss(

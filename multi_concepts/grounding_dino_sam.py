@@ -10,9 +10,9 @@ from segment_anything import sam_model_registry, SamPredictor
 from typing import List
 import numpy as np
 import cv2
+import json
 from tqdm.auto import tqdm
 
-from openai import OpenAI
 import base64
 import requests
 
@@ -36,6 +36,49 @@ def segment(sam_predictor: SamPredictor, image: np.ndarray, xyxy: np.ndarray) ->
         result_masks.append(masks[index])
     return np.array(result_masks)
 
+def resizeAndPad(img, size, padColor=0):
+
+    h, w = img.shape[:2]
+    sh, sw = size
+
+    # interpolation method
+    if h > sh or w > sw: # shrinking image
+        interp = cv2.INTER_AREA
+    else: # stretching image
+        interp = cv2.INTER_CUBIC
+
+    # aspect ratio of image
+    aspect = w/h  # if on Python 2, you might need to cast as a float: float(w)/h
+
+    # compute scaling and pad sizing
+    if aspect > 1: # horizontal image
+        new_w = sw
+        new_h = np.round(new_w/aspect).astype(int)
+        pad_vert = (sh-new_h)/2
+        pad_top, pad_bot = np.floor(pad_vert).astype(int), np.ceil(pad_vert).astype(int)
+        pad_left, pad_right = 0, 0
+    elif aspect < 1: # vertical image
+        new_h = sh
+        new_w = np.round(new_h*aspect).astype(int)
+        pad_horz = (sw-new_w)/2
+        pad_left, pad_right = np.floor(pad_horz).astype(int), np.ceil(pad_horz).astype(int)
+        pad_top, pad_bot = 0, 0
+    else: # square image
+        new_h, new_w = sh, sw
+        pad_left, pad_right, pad_top, pad_bot = 0, 0, 0, 0
+
+    # set pad color
+    if len(img.shape) == 3 and not isinstance(padColor, (list, tuple, np.ndarray)): 
+        # color image but only one color provided
+        padColor = [padColor]*3
+
+    # scale and pad
+    scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
+    scaled_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=padColor)
+
+    return scaled_img
+
+
 
 def gpt4v_captioning(img_dir):
 
@@ -45,9 +88,7 @@ def gpt4v_captioning(img_dir):
     }
 
     images = [encode_image(os.path.join(img_dir, img_name)) for img_name in os.listdir(img_dir)]
-    prompt = "All these images are from one individual. What garments are in these images? \
-    Please list all the garments in the form of 'garment1|description, garment2|description, ...'\
-        separated with comma, thus the reponse could be directly used by python array loader."
+    prompt = open("./multi_concepts/gpt4v_prompt.txt", "r").read()
 
     payload = {
         "model": "gpt-4-vision-preview", "messages":
@@ -65,7 +106,6 @@ def gpt4v_captioning(img_dir):
     )
 
     result = response.json()['choices'][0]['message']['content']
-    print(result)
 
     return result
 
@@ -102,15 +142,30 @@ if __name__ == '__main__':
     BOX_TRESHOLD = 0.50
     TEXT_TRESHOLD = 0.50
 
-    CLASSES = [item.split("|")[0].strip().replace("t-","") for item in gpt4v_captioning(opt.in_dir).split(",")]
+    json_path = f"{opt.out_dir}/gpt4v_response.json"
+    if not os.path.exists(json_path):
+        gpt4v_response = gpt4v_captioning(opt.in_dir)
+        with open(json_path, "w") as f:
+            f.write(gpt4v_response)
+    else:
+        with open(json_path, "r") as f:
+            gpt4v_response = f.read()
+
+    print(gpt4v_response)
+
+    CLASSES = [item.strip() for item in json.loads(gpt4v_response).keys() if item != 'gender']
+    CLASSES = ["person"] + CLASSES
 
     print(CLASSES)
 
-    for img_name in tqdm(os.listdir(opt.in_dir)):
+    for img_name in tqdm(os.listdir(opt.in_dir+"/image")):
 
-        img_path = os.path.join(opt.in_dir, img_name)
-
+        img_path = os.path.join(opt.in_dir, "image", img_name)
+        
         image = cv2.imread(img_path)
+        if image.shape[:2] != (512, 512):
+            image = resizeAndPad(image, (512, 512))
+            cv2.imwrite(img_path, image)
 
         # detect objects
         detections = grounding_dino_model.predict_with_classes(
@@ -128,10 +183,13 @@ if __name__ == '__main__':
         )
 
         mask_dict = {}
-
+        person_masks = detections.mask[detections.class_id == 0]
+        person_mask = (np.stack(person_masks).sum(axis=0)>0).astype(np.uint8)
+        
         for mask, cls_id in zip(detections.mask, detections.class_id):
-            if cls_id is not None:
-                mask_dict[cls_id] = mask_dict.get(cls_id, []) + [mask]
+            if cls_id is not None and cls_id != 0:
+                if np.logical_and(mask, person_mask).sum() / person_mask.sum() < 0.9:
+                    mask_dict[cls_id] = mask_dict.get(cls_id, []) + [mask]
 
         for cls_id, masks in mask_dict.items():
             mask = np.stack(masks).sum(axis=0)
