@@ -6,11 +6,11 @@ export OPENAI_API_KEY=$(cat OPENAI_API_KEY)
 
 export INPUT_DIR=$1
 export EXP_DIR=$2
-export SUBJECT_NAME=$(basename $1 | cut -d"." -f1)
+export SUBJECT_NAME=$3
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 # Step 0: Run DINO+SAM
-python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${INPUT_DIR}
+# python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${INPUT_DIR}
 
 # Step 1: Preprocess image, get SMPL-X & normal estimation
 # mkdir -p ${EXP_DIR}
@@ -41,6 +41,11 @@ python multi_concepts/grounding_dino_sam.py --in_dir ${INPUT_DIR} --out_dir ${IN
 # # Step 4: Run geometry stage (Run on a single GPU)
 # python cores/main.py --config configs/tech_geometry.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME
 # python utils/body_utils/postprocess.py --dir $EXP_DIR/obj --name $SUBJECT_NAME
+
+python cores/main_mc.py \
+ --config configs/tech_mc_geometry.yaml \
+ --exp_dir ${EXP_DIR} \
+ --sub_name ${SUBJECT_NAME}
 
 # # Step 5: Run texture stage (Run on a single GPU)
 # python cores/main.py --config configs/tech_texture.yaml --exp_dir $EXP_DIR --sub_name $SUBJECT_NAME

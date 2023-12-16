@@ -12,7 +12,6 @@ import torch
 from scipy import ndimage
 from scipy.interpolate import interp2d
 from scipy.linalg import orth
-
 """
 # --------------------------------------------
 # Super-Resolution

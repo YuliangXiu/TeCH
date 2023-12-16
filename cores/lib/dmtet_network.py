@@ -1,6 +1,7 @@
 import random
 
 import kaolin as kal
+import mesh_to_sdf
 import torch
 import torch.nn as nn
 import trimesh
@@ -196,7 +197,6 @@ class DMTetMesh(nn.Module):
     def init_mesh(self, mesh_v, mesh_f, init_padding=0.):
         num_pts = self.tet_v.shape[0]
         mesh = trimesh.Trimesh(mesh_v.cpu().numpy(), mesh_f.cpu().numpy())
-        import mesh_to_sdf
         sdf_tet = torch.tensor(
             mesh_to_sdf.mesh_to_sdf(mesh,
                                     self.tet_v.cpu().numpy()), dtype=torch.float32

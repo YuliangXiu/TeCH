@@ -1,12 +1,17 @@
 #import nvdiffrast.torch as dr
 import argparse
+import json
 import os
 
 import torch
-from lib.provider import ViewDataset
-from lib.renderer import Renderer
-from lib.trainer import *
+import trimesh
 from yacs.config import CfgNode as CN
+
+from cores.lib.provider import ViewDataset
+from cores.lib.renderer import Renderer
+from cores.lib.trainer import *
+from utils.body_utils.lib import smplx
+from utils.body_utils.lib.dataset.mesh_util import SMPLX
 
 
 def load_config(path, default_path=None):
@@ -18,11 +23,25 @@ def load_config(path, default_path=None):
     return cfg
 
 
+def dict_to_prompt(d):
+
+    prompt = "a high-resolution DSLR image of"
+    keys = list(d.keys())
+    gender = "man" if d['gender'] == "male" else "woman"
+    prompt += f" a {gender} wearing"
+    keys.remove("gender")
+
+    for idx, k in enumerate(keys):
+        if idx < len(keys) - 1:
+            prompt += f" a <asset{idx}> {d[k]} {k},"
+        else:
+            prompt += f" a <asset{idx}> {d[k]} {k}."
+    return d['gender'], prompt
+
+
 #torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
-
-    # os.environ["PYOPENGL_PLATFORM"]="egl"
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help="config file")
@@ -33,62 +52,69 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
     cfg = load_config(opt.config, default_path="configs/default.yaml")
+
     cfg.test.test = opt.test
     cfg.workspace = os.path.join(opt.exp_dir, cfg.stage)
     cfg.exp_root = opt.exp_dir
     cfg.sub_name = opt.sub_name
 
-    if cfg.data.load_input_image:
-        cfg.data.img = os.path.join(opt.exp_dir, 'png', "{}_crop.png".format(opt.sub_name))
-    if cfg.data.load_front_normal:
-        cfg.data.front_normal_img = os.path.join(
-            opt.exp_dir, 'normal', "{}_normal_front.png".format(opt.sub_name)
-        )
-    if cfg.data.load_back_normal:
-        cfg.data.back_normal_img = os.path.join(
-            opt.exp_dir, 'normal', "{}_normal_back.png".format(opt.sub_name)
-        )
-    if cfg.data.load_keypoints:
-        cfg.data.keypoints_path = os.path.join(
-            opt.exp_dir, 'obj', "{}_smpl.npy".format(opt.sub_name)
-        )
-    if cfg.data.load_result_mesh:
-        cfg.data.last_model = os.path.join(opt.exp_dir, 'obj', "{}_pose.obj".format(opt.sub_name))
-        cfg.data.last_ref_model = os.path.join(
-            opt.exp_dir, 'obj', "{}_smpl.obj".format(opt.sub_name)
-        )
-    else:
-        cfg.data.last_model = os.path.join(opt.exp_dir, 'obj', "{}_smpl.obj".format(opt.sub_name))
-    if cfg.data.load_apose_mesh:
-        cfg.data.can_pose_folder = os.path.join(
-            opt.exp_dir, 'obj', "{}_apose.obj".format(opt.sub_name)
-        )
-    if cfg.data.load_apose_mesh:
-        cfg.data.can_pose_folder = os.path.join(
-            opt.exp_dir, 'obj', "{}_apose.obj".format(opt.sub_name)
-        )
-    if cfg.data.load_occ_mask:
-        cfg.data.occ_mask = os.path.join(opt.exp_dir, 'png', "{}_occ_mask.png".format(opt.sub_name))
-
-    if cfg.data.load_da_pose_mesh:
-        cfg.data.da_pose_mesh = os.path.join(
-            opt.exp_dir, 'obj', "{}_da_pose.obj".format(opt.sub_name)
-        )
     if cfg.guidance.use_dreambooth:
-        cfg.guidance.hf_key = os.path.join(opt.exp_dir, 'sd_model')
-    if cfg.guidance.text is None:
-        with open(os.path.join(opt.exp_dir, 'prompt.txt'), 'r') as f:
-            cfg.guidance.text = f.readlines()[0].split('|')[0]
+        cfg.guidance.hf_key = opt.exp_dir
 
-    # print(cfg)
+    if cfg.guidance.text is None:
+        with open(
+            os.path.join(opt.exp_dir.replace("results", "examples"), 'gpt4v_response.json'), 'r'
+        ) as f:
+            gpt4v_response = json.load(f)
+            gender, cfg.guidance.text = dict_to_prompt(gpt4v_response)
+
+            print(f"Using prompt: {cfg.guidance.text}")
+
+    # create smplx base meshes wrt gender
+    smplx_path = os.path.join(opt.exp_dir.replace("results", "examples"), f"smplx_{gender}.obj")
+    keypoint_path = os.path.join(opt.exp_dir.replace("results", "examples"), f"smplx_{gender}.npy")
+    cfg.data.last_model = smplx_path
+    cfg.data.keypoints_path = keypoint_path
+
+    if not os.path.exists(smplx_path) or not os.path.exists(keypoint_path):
+
+        smplx_container = SMPLX()
+        smplx_model = smplx.create(
+            smplx_container.model_dir,
+            model_type='smplx',
+            gender=gender,
+            age="adult",
+            use_face_contour=False,
+            use_pca=False,
+            num_betas=200,
+            num_expression_coeffs=50,
+            flat_hand_mean=True,
+            ext='pkl'
+        )
+
+        smplx_obj = smplx_model(
+            return_verts=True,
+            return_full_pose=True,
+            return_joint_transformation=True,
+            return_vertex_transformation=True,
+            pose_type="a-pose"
+        )
+
+        smplx_verts = smplx_obj.vertices.detach()[0].numpy()
+        smplx_joints = smplx_obj.joints.detach()[0].numpy()
+        pelvis_y = smplx_joints[0, 1]
+        smplx_verts[:, 1] -= pelvis_y
+        smplx_joints[:, 1] -= pelvis_y
+        smplx_faces = smplx_model.faces
+        trimesh.Trimesh(smplx_verts, smplx_faces).export(smplx_path)
+        np.save(keypoint_path, {"joints": torch.tensor(smplx_joints)}, allow_pickle=True)
 
     seed_everything(opt.seed)
     model = Renderer(cfg)
+
     if model.keypoints is not None:
-        if len(model.keypoints[0]) == 1:
-            cfg.train.head_position = model.keypoints[0][0].cpu().numpy().tolist()
-        else:
-            cfg.train.head_position = model.keypoints[0][15].cpu().numpy().tolist()
+        # SMPL-X head joint is 15
+        cfg.train.head_position = model.keypoints[0][15].cpu().numpy().tolist()
     else:
         cfg.train.head_position = np.array([0., 0.4, 0.], dtype=np.float32).tolist()
     cfg.train.canpose_head_position = np.array([0., 0.4, 0.], dtype=np.float32).tolist()
@@ -131,7 +157,7 @@ if __name__ == '__main__':
         ).dataloader()
         params_list = list()
         if cfg.guidance.type == 'stable-diffusion':
-            from lib.guidance import StableDiffusion
+            from cores.lib.guidance import StableDiffusion
             guidance = StableDiffusion(
                 device,
                 cfg.guidance.sd_version,
@@ -148,7 +174,7 @@ if __name__ == '__main__':
             raise NotImplementedError(f'--guidance {cfg.guidance.type} is not implemented.')
 
         if cfg.train.optim == 'adan':
-            from lib.optimizer import Adan
+            from cores.lib.optimizer import Adan
 
             # Adan usually requires a larger LR
             params_list.extend(model.get_params(5 * cfg.train.lr))

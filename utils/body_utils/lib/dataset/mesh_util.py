@@ -19,7 +19,6 @@ import os
 import os.path as osp
 
 import _pickle as cPickle
-import lib.smplx as smplx
 import numpy as np
 import open3d as o3d
 import torch
@@ -27,12 +26,17 @@ import torch.nn.functional as F
 import torchvision
 import trimesh
 from kaolin.metrics.trianglemesh import point_to_mesh_distance
-from lib.common.render_utils import Pytorch3dRasterizer, face_vertices
 from PIL import Image, ImageDraw, ImageFont
 from pytorch3d.loss import mesh_laplacian_smoothing, mesh_normal_consistency
 from pytorch3d.renderer.mesh import rasterize_meshes
 from pytorch3d.structures import Meshes
 from scipy.spatial import cKDTree
+
+from utils.body_utils.lib import smplx
+from utils.body_utils.lib.common.render_utils import (
+    Pytorch3dRasterizer,
+    face_vertices,
+)
 
 
 class Format:

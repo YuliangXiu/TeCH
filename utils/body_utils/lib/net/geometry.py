@@ -20,7 +20,6 @@ import numpy as np
 import torch
 from einops.einops import rearrange
 from torch.nn import functional as F
-
 """
 Useful geometric operations, e.g. Perspective projection and a differentiable Rodrigues formula
 Parts of the code are taken from https://github.com/MandyMo/pytorch_HMR

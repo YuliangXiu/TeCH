@@ -14,7 +14,6 @@
 #
 # Contact: ps-license@tuebingen.mpg.de
 
-
 from .body_models import (
     FLAME,
     MANO,

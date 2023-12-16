@@ -68,14 +68,13 @@ def view_images(
                 3,
             ),
             dtype=np.uint8,
-        )
-        * 255
+        ) * 255
     )
     for i in range(num_rows):
         for j in range(num_cols):
             image_[
-                i * (h + offset) : i * (h + offset) + h :,
-                j * (w + offset) : j * (w + offset) + w,
+                i * (h + offset):i * (h + offset) + h:,
+                j * (w + offset):j * (w + offset) + w,
             ] = images[i * num_cols + j]
 
     pil_img = Image.fromarray(image_)
@@ -101,7 +100,7 @@ class AttentionControl(abc.ABC):
     def __call__(self, attn, is_cross: bool, place_in_unet: str):
         if self.cur_att_layer >= self.num_uncond_att_layers:
             h = attn.shape[0]
-            attn[h // 2 :] = self.forward(attn[h // 2 :], is_cross, place_in_unet)
+            attn[h // 2:] = self.forward(attn[h // 2:], is_cross, place_in_unet)
         self.cur_att_layer += 1
         if self.cur_att_layer == self.num_att_layers + self.num_uncond_att_layers:
             self.cur_att_layer = 0
@@ -228,17 +227,15 @@ class AttentionControlEdit(AttentionStore, abc.ABC):
     def forward(self, attn, is_cross: bool, place_in_unet: str):
         super(AttentionControlEdit, self).forward(attn, is_cross, place_in_unet)
 
-        if is_cross or (
-            self.num_self_replace[0] <= self.cur_step < self.num_self_replace[1]
-        ):
+        if is_cross or (self.num_self_replace[0] <= self.cur_step < self.num_self_replace[1]):
             h = attn.shape[0] // (self.batch_size)
             attn = attn.reshape(self.batch_size, h, *attn.shape[1:])
             attn_base, attn_repalce = attn[0], attn[1:]
             if is_cross:
                 alpha_words = self.cross_replace_alpha[self.cur_step]
                 attn_repalce_new = (
-                    self.replace_cross_attention(attn_base, attn_repalce) * alpha_words
-                    + (1 - alpha_words) * attn_repalce
+                    self.replace_cross_attention(attn_base, attn_repalce) * alpha_words +
+                    (1 - alpha_words) * attn_repalce
                 )
                 attn[1:] = attn_repalce_new
             else:
@@ -250,9 +247,7 @@ class AttentionControlEdit(AttentionStore, abc.ABC):
         self,
         prompts,
         num_steps: int,
-        cross_replace_steps: Union[
-            float, Tuple[float, float], Dict[str, Tuple[float, float]]
-        ],
+        cross_replace_steps: Union[float, Tuple[float, float], Dict[str, Tuple[float, float]]],
         self_replace_steps: Union[float, Tuple[float, float]],
         local_blend: Optional[LocalBlend],
         tokenizer,
@@ -334,9 +329,7 @@ class AttentionRefine(AttentionControlEdit):
 class AttentionReweight(AttentionControlEdit):
     def replace_cross_attention(self, attn_base, att_replace):
         if self.prev_controller is not None:
-            attn_base = self.prev_controller.replace_cross_attention(
-                attn_base, att_replace
-            )
+            attn_base = self.prev_controller.replace_cross_attention(attn_base, att_replace)
         attn_replace = attn_base[None, :, :, :] * self.equalizer[:, None, None, :]
         return attn_replace
 
@@ -372,7 +365,7 @@ def get_equalizer(
     tokenizer,
 ):
     if type(word_select) is int or type(word_select) is str:
-        word_select = (word_select,)
+        word_select = (word_select, )
     equalizer = torch.ones(len(values), 77)
     values = torch.tensor(values, dtype=torch.float32)
     for word in word_select:
@@ -416,17 +409,13 @@ def get_time_words_attention_alpha(
         )
     for key, item in cross_replace_steps.items():
         if key != "default_":
-            inds = [
-                get_word_inds(prompts[i], key, tokenizer)
-                for i in range(1, len(prompts))
-            ]
+            inds = [get_word_inds(prompts[i], key, tokenizer) for i in range(1, len(prompts))]
             for i, ind in enumerate(inds):
                 if len(ind) > 0:
-                    alpha_time_words = update_alpha_time_word(
-                        alpha_time_words, item, i, ind
-                    )
+                    alpha_time_words = update_alpha_time_word(alpha_time_words, item, i, ind)
     alpha_time_words = alpha_time_words.reshape(
-        num_steps + 1, len(prompts) - 1, 1, 1, max_num_words
+        num_steps + 1,
+        len(prompts) - 1, 1, 1, max_num_words
     )
     return alpha_time_words
 
@@ -526,10 +515,10 @@ def get_mapper(x: str, y: str, tokenizer, max_len=77):
     matrix, trace_back = global_align(x_seq, y_seq, score)
     mapper_base = get_aligned_sequences(x_seq, y_seq, trace_back)[-1]
     alphas = torch.ones(max_len)
-    alphas[: mapper_base.shape[0]] = mapper_base[:, 1].ne(-1).float()
+    alphas[:mapper_base.shape[0]] = mapper_base[:, 1].ne(-1).float()
     mapper = torch.zeros(max_len, dtype=torch.int64)
-    mapper[: mapper_base.shape[0]] = mapper_base[:, 1]
-    mapper[mapper_base.shape[0] :] = len(y_seq) + torch.arange(max_len - len(y_seq))
+    mapper[:mapper_base.shape[0]] = mapper_base[:, 1]
+    mapper[mapper_base.shape[0]:] = len(y_seq) + torch.arange(max_len - len(y_seq))
     return mapper, alphas
 
 
@@ -551,9 +540,8 @@ def get_word_inds(text: str, word_place: int, tokenizer):
         word_place = [word_place]
     out = []
     if len(word_place) > 0:
-        words_encode = [
-            tokenizer.decode([item]).strip("#") for item in tokenizer.encode(text)
-        ][1:-1]
+        words_encode = [tokenizer.decode([item]).strip("#")
+                        for item in tokenizer.encode(text)][1:-1]
         cur_len, ptr = 0, 0
 
         for i in range(len(words_encode)):

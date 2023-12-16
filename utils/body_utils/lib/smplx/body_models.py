@@ -62,8 +62,6 @@ ModelOutput = namedtuple(
 ModelOutput.__new__.__defaults__ = (None, ) * len(ModelOutput._fields)
 
 
-
-
 class SMPL(nn.Module):
 
     NUM_JOINTS = 23

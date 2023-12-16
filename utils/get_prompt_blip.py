@@ -7,8 +7,8 @@ from PIL import Image
 from transformers import (
     AutoProcessor,
     BlipForQuestionAnswering,
-    SegformerImageProcessor,
     SegformerForSemanticSegmentation,
+    SegformerImageProcessor,
 )
 
 mylabel2ids = {
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     opt = parser.parse_args()
 
     print(f'[INFO] Generating text prompt for {opt.in_dir}...')
-    
+
     model = SegformerForSemanticSegmentation.from_pretrained(
         "matei-dorian/segformer-b5-finetuned-human-parsing"
     ).cuda()

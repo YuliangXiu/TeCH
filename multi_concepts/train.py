@@ -15,13 +15,13 @@ limitations under the License.
 """
 
 import argparse
+import glob
 import hashlib
 import itertools
+import json
 import logging
 import math
 import os
-import json
-import glob
 import random
 import warnings
 from pathlib import Path

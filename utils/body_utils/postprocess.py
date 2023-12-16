@@ -141,7 +141,8 @@ if True:    #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix
     kernel = np.ones((20, 20), np.float32)
     erosion_mask = cv2.erode((occ_mask * 255).astype(np.uint8), kernel, cv2.BORDER_REFLECT) == 255
     loss_mask = loss_mask & erosion_mask
-    Image.fromarray((loss_mask * 255).astype(np.uint8)).save(f'{prefix.replace("/obj/", "/png/")}_occ_mask.png')
+    Image.fromarray((loss_mask * 255).astype(np.uint8)
+                   ).save(f'{prefix.replace("/obj/", "/png/")}_occ_mask.png')
 
     bc_weights = torch.tensor(bc_weights).to(device)
 

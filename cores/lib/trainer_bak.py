@@ -1,4 +1,5 @@
 import glob
+import math
 import os
 import random
 import time
@@ -20,6 +21,8 @@ from thirdparties.lpips import LPIPS
 
 from .annotators import Cannydetector, HEDdetector
 from .camera_utils import *
+from .chamfer import chamfer_distance
+from .color_utils import convert_rgb
 from .loss_utils import *
 
 
@@ -463,7 +466,6 @@ class Trainer(object):
             else:
                 shadings = ['lambertian']
                 ambient_ratio = 0.1
-
         loss = 0
         step_mesh = None
         for i_shading, shading in enumerate(shadings):
@@ -491,8 +493,10 @@ class Trainer(object):
             pred_rgb = outputs['image'].reshape(1, H, W,
                                                 3).permute(0, 3, 1,
                                                            2).contiguous()    # [1, 3, H, W]
+            pred_alpha = outputs['alpha'].reshape(1, H, W,
+                                                  1).permute(0, 3, 1,
+                                                             2).contiguous()    # [1, 1, H, W]
             pred_depth = outputs['depth'].reshape(1, H, W)
-
             if step_mesh is None:
                 step_mesh = outputs['mesh']
 
@@ -553,13 +557,188 @@ class Trainer(object):
                     is_face=is_face
                 )
 
-            # smoothness regularizer
+            output_images_novel = outputs['image']
+            output_alpha_novel = outputs['alpha']
 
+            # regularizations
+            # smoothness
             mesh = outputs['mesh']
+            _mesh = None
             if i_shading == 0:
                 if flag_train_geometry and self.cfg.train.lambda_lap > 0:
                     loss_lap = laplacian_smooth_loss(mesh.v, mesh.f.long())
                     loss = loss + self.cfg.train.lambda_lap * loss_lap
+
+            if (self.normal_image is not None) and shading == 'normal':
+                if self.back_normal_image is not None:
+                    recon_image, recon_mask, recon_mask_edt, flip = random.choice(
+                        [(self.normal_image, self.normal_mask, self.normal_mask_edt, False),
+                         (
+                             self.back_normal_image, self.back_normal_mask,
+                             self.back_normal_mask_edt, True
+                         )]
+                    )
+                else:
+                    recon_image = self.normal_image
+                    recon_mask = self.normal_mask
+                    recon_mask_edt = self.normal_mask_edt
+                    flip = False
+            else:
+                recon_image = self.input_image
+                recon_mask = self.input_mask
+                recon_mask_edt = self.input_mask_edt
+                flip = False
+
+            # calculate reconstruction loss
+            TO_WORLD = np.eye(
+                4,
+                dtype=np.float32,
+            )
+            TO_WORLD[2, 2] = -1
+            TO_WORLD[1, 1] = -1
+
+            H, W = recon_image.shape[1:]
+            intrinsics = torch.tensor([H, W, H / 2, W / 2])[None]
+            mvp = mvp.new_tensor(np.linalg.inv(TO_WORLD)) @ self.model.mesh.resize_matrix_inv
+            poses = torch.tensor(TO_WORLD, dtype=torch.float32)[None]
+            rays = get_rays(poses, intrinsics, H, W, -1)
+            rays_o = rays['rays_o'].to(self.device)    # [B, N, 3]
+            rays_d = rays['rays_d'].to(self.device)    # [B, N, 3]
+
+            if flip:
+                flip_mat = torch.eye(4).to(mvp)
+                flip_mat[2, 2] = -1
+                mvp = flip_mat @ mvp
+
+            if shading in ['textureless', 'normal']:
+                outputs = self.model(
+                    rays_o,
+                    rays_d,
+                    mvp,
+                    H,
+                    W,
+                    alpha_only=False,
+                    shading=shading,
+                    global_step=self.global_step,
+                    mesh=step_mesh
+                )
+                pred_alpha = outputs['alpha'].reshape(1, H, W,
+                                                      1).permute(0, 3, 1,
+                                                                 2).contiguous()    # [1, 3, H, W]
+                pred_rgb = outputs['image'].reshape(1, H, W,
+                                                    3).permute(0, 3, 1,
+                                                               2).contiguous()    # [1, 3, H, W]
+                mask = recon_mask.unsqueeze(0)
+                mask_edt = recon_mask_edt.unsqueeze(0)
+                gt = recon_image.unsqueeze(0)
+                if self.loss_mask_norm is not None and self.normal_image is not None:
+                    loss_mask_norm = self.loss_mask_norm if not flip else torch.flip(
+                        self.loss_mask_norm, dims=[-1]
+                    )
+                    mask = mask * loss_mask_norm
+                    pred_alpha = pred_alpha * loss_mask_norm
+                elif self.loss_mask is not None:
+                    mask = mask * self.loss_mask
+                    pred_alpha = pred_alpha * self.loss_mask
+
+                if self.cfg.train.lambda_sil > 0.:
+                    l_sil = silhouette_loss(
+                        pred_alpha.reshape(1, 1, H, W),
+                        mask.reshape(1, 1, H, W),
+                        edt=mask_edt,
+                        l2_weight=1.,
+                        edge_weight=0.
+                    ) * self.cfg.train.lambda_sil
+                    loss = loss + l_sil
+                if self.normal_image is not None and self.cfg.train.lambda_normal > 0:
+                    if self.erosion_normal_mask is not None:
+                        mask = mask * (
+                            self.erosion_normal_mask if not flip else self.erosion_back_normal_mask
+                        )
+                    lpips_loss = self.lpips_model(
+                        scale_for_lpips(pred_rgb * mask), scale_for_lpips(gt * mask)
+                    )
+                    mse_loss = nn.functional.mse_loss(pred_rgb * mask, gt * mask) * 0.2
+                    decay_ratio = 1.
+                    if self.cfg.train.decay_lnorm_cosine_cycle is not None:
+                        if self.global_step > self.cfg.train.decay_lnorm_cosine_max_iter:
+                            decay_ratio = 0.
+                        else:
+                            t = (
+                                self.global_step % self.cfg.train.decay_lnorm_cosine_cycle
+                            ) / self.cfg.train.decay_lnorm_cosine_cycle
+                            decay_ratio = (1 + math.cos(t * math.pi)) / 2
+                    elif self.cfg.train.decay_lnorm_iter is not None:
+                        for step, ratio in zip(
+                            self.cfg.train.decay_lnorm_iter, self.cfg.train.decay_lnorm_ratio
+                        ):
+                            if self.global_step > step:
+                                decay_ratio = ratio
+
+                    l_norm = (lpips_loss + mse_loss) * self.cfg.train.lambda_normal * decay_ratio
+                    loss = loss + l_norm
+                #print('l_sil', l_sil.detach().item(), 'l_norm', l_norm.detach().item())
+                # if self.cfg.train.controlnet_guide_inputview:
+                #     controlnet_hint = Image.fromarray(self.controlnet_annotator(self.input_image.permute(1, 2, 0))).resize((512,512))
+                #     pred_rgb = outputs['image'].reshape(1, H, W, 3).permute(0, 3, 1, 2).contiguous()  # [1, 3, H, W]
+                #     loss = loss + self.guidance.train_step(text_z, pred_rgb, guidance_scale=self.cfg.train.guidance_scale, controlnet_conditioning_scale=self.cfg.train.controlnet_conditioning_scale, controlnet_hint=controlnet_hint,
+                #                             poses=data['poses'], text_embedding_novd=text_z_novd)
+            else:
+                outputs = self.model(
+                    rays_o, rays_d, mvp, H, W, global_step=self.global_step, mesh=step_mesh
+                )
+                pred_rgb = outputs['image'].reshape(1, H, W,
+                                                    3).permute(0, 3, 1,
+                                                               2).contiguous()    # [1, 3, H, W]
+                pred_alpha = outputs['alpha'].reshape(1, H, W,
+                                                      1).permute(0, 3, 1,
+                                                                 2).contiguous()    # [1, 3, H, W]
+                mask = recon_mask.unsqueeze(0)
+                mask_edt = recon_mask_edt.unsqueeze(0)
+                if self.loss_mask is not None:
+                    mask = mask * self.loss_mask
+                    pred_alpha = pred_alpha * self.loss_mask
+                gt = self.input_image.unsqueeze(0)
+                if self.cfg.train.lambda_sil > 0:
+                    loss = loss + silhouette_loss(
+                        pred_alpha.reshape(1, 1, H, W),
+                        mask.reshape(1, 1, H, W),
+                        edt=mask_edt,
+                        l2_weight=1.,
+                        edge_weight=0.
+                    ) * self.cfg.train.lambda_sil
+
+                if self.erosion_mask is not None:
+                    mask = mask * self.erosion_mask
+                mse_loss = nn.functional.mse_loss(pred_rgb * mask, gt * mask) * 0.2
+                random_color = torch.rand_like(gt[:1, :, :1, :1])
+                pred_rgb = pred_rgb * mask + random_color * (1 - mask)
+                gt = gt * mask + random_color * (1 - mask)
+                if self.cfg.train.crop_for_lpips:    # to save memory
+                    pred_rgb, _ = crop_by_mask(pred_rgb, mask)
+                    gt, mask = crop_by_mask(gt, mask)
+                lpips_loss = self.lpips_model(scale_for_lpips(pred_rgb), scale_for_lpips(gt))
+                loss = loss + (lpips_loss + mse_loss) * self.cfg.train.lambda_recon
+
+            if shading == 'albedo' and (
+                not is_face
+            ) and self.cfg.train.lambda_color_chamfer > 0. and self.global_step >= self.cfg.train.color_chamfer_step:
+                h, w = output_images_novel.shape[-3], output_images_novel.shape[-2]
+                input_image = self.input_image.permute(1, 2, 0)
+                input_image = convert_rgb(input_image, self.cfg.train.color_chamfer_space)
+                output_images_novel = output_images_novel.reshape(h, w, 3)
+                output_images_novel = convert_rgb(
+                    output_images_novel, self.cfg.train.color_chamfer_space
+                )
+                H, W = input_image.shape[-3], input_image.shape[-2]
+                input_pixels = input_image[self.input_mask.reshape(H, W) > 0.9].unsqueeze(0)
+                pred_pixels = output_images_novel.reshape(h, w, -1)[
+                    output_alpha_novel.reshape(h, w) > 0.9].unsqueeze(0)
+                loss = loss + chamfer_distance(
+                    input_pixels,
+                    pred_pixels,
+                    single_directional=self.cfg.train.single_directional_color_chamfer
+                )[0] * self.cfg.train.lambda_color_chamfer
 
         return pred_rgb, pred_depth, loss
 

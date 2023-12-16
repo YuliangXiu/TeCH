@@ -115,6 +115,7 @@ class Renderer(nn.Module):
         # TODO: textrue 2D
 
         if cfg.model.use_dmtet_network:
+
             self.mesh = Mesh.load_obj(
                 self.cfg.data.last_model,
                 ref_path=self.cfg.data.last_ref_model,

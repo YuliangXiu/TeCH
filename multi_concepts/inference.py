@@ -15,8 +15,8 @@ limitations under the License.
 """
 
 import argparse
-import os
 import json
+import os
 import random
 
 import torch
@@ -60,8 +60,11 @@ class BreakASceneInference:
             os.makedirs(self.args.output_dir, exist_ok=True)
         for idx in range(len(images)):
             print(prompts[idx])
-            prompt_as_title = prompts[idx].replace("<asset","").replace(">","").replace(",", " ").replace(" ", "_")
-            images[idx].save(os.path.join(self.args.output_dir, f"{prompt_as_title}.png"))
+            prompt_as_title = prompts[idx].replace("<asset",
+                                                   "").replace(">",
+                                                               "").replace(",",
+                                                                           " ").replace(" ", "_")
+            images[idx].save(os.path.join(self.args.output_dir, f"{idx:02d}_{prompt_as_title}.png"))
 
 
 if __name__ == "__main__":
@@ -70,7 +73,7 @@ if __name__ == "__main__":
         os.path.join(break_a_scene_inference.args.instance_dir, 'gpt4v_response.json'), 'r'
     ) as f:
         gpt4v_response = json.load(f)
-        
+
     gender = 'man' if gpt4v_response['gender'] in ['man', 'male'] else 'woman'
     classes = list(gpt4v_response.keys())
     classes.remove("gender")
@@ -78,11 +81,11 @@ if __name__ == "__main__":
     prompt_words = [f"{placeholders[i]} {classes[i]}" for i in range(len(classes))]
 
     prompts = []
-    
+
     for i in range(break_a_scene_inference.args.num_samples):
         num_of_tokens = random.randrange(1, len(prompt_words) + 1)
         tokens_ids_to_use = sorted(random.sample(range(len(prompt_words)), k=num_of_tokens))
-        prompt_head = f"a photo of asian {gender} wearing, walking on the beach"
+        prompt_head = f"a photo of asian {gender}, walking on the beach, wearing"
         prompt_garments = ",".join([prompt_words[i] for i in tokens_ids_to_use])
         prompts.append(f"{prompt_head} {prompt_garments}")
 
