@@ -4,7 +4,7 @@ boto3
 chumpy
 dataclasses
 dearpygui
-diffusers==0.15.0
+diffusers==0.26.3
 einops
 imageio-ffmpeg
 imageio

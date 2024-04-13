@@ -2,7 +2,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from lib.common.train_util import batch_mean
-from lib.net import NormalNet
+from lib.net.NormalNet import NormalNet
 from skimage.transform import resize
 
 
@@ -23,7 +23,7 @@ class Normal(pl.LightningModule):
         self.automatic_optimization = False
 
         self.schedulers = []
-
+        
         self.netG = NormalNet(self.cfg)
 
         self.in_nml = [item[0] for item in cfg.net.in_nml]

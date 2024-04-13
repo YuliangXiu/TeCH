@@ -33,7 +33,8 @@ from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
 from torch.utils.data import DataLoader, Dataset
 
-# os.environ["PYOPENGL_PLATFORM"]="egl"
+torch.set_float32_matmul_precision("high")
+os.environ["PYOPENGL_PLATFORM"] = "egl"
 
 
 def load_model_from_config(config, ckpt, verbose=False):

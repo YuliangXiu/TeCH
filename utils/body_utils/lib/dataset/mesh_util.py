@@ -26,6 +26,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 import trimesh
+import pymeshlab
 from kaolin.metrics.trianglemesh import point_to_mesh_distance
 from lib.common.render_utils import Pytorch3dRasterizer, face_vertices
 from PIL import Image, ImageDraw, ImageFont
@@ -401,9 +402,14 @@ def poisson(mesh, obj_path, depth=10, face_count=50000):
     largest_mesh = keep_largest(trimesh.Trimesh(np.array(mesh.vertices), np.array(mesh.triangles)))
     largest_mesh.export(obj_path)
 
-    # mesh decimation for faster rendering
-    #low_res_mesh = largest_mesh.simplify_quadratic_decimation(face_count)
-    return largest_mesh
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh(obj_path)
+    ms.meshing_decimation_quadric_edge_collapse(targetfacenum=500000)
+    ms.save_current_mesh(obj_path)
+
+    result_mesh = trimesh.load(obj_path)
+
+    return result_mesh
 
 
 # Losses to smooth / regularize the mesh shape

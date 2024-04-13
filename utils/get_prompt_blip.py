@@ -4,6 +4,13 @@ import numpy as np
 import torch
 from PIL import Image
 
+from transformers import (
+    SegformerFeatureExtractor,
+    SegformerForSemanticSegmentation,
+    AutoProcessor,
+    BlipForQuestionAnswering,
+)
+
 mylabel2ids = {
     'hat': [1],
     'sunglasses': [3],

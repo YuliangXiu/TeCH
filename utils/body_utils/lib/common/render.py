@@ -29,6 +29,22 @@ from pytorch3d.structures import Meshes
 from termcolor import colored
 from tqdm import tqdm
 
+from pytorch3d.renderer import (
+    AlphaCompositor,
+    BlendParams,
+    FoVOrthographicCameras,
+    MeshRasterizer,
+    MeshRenderer,
+    PointsRasterizationSettings,
+    PointsRasterizer,
+    PointsRenderer,
+    RasterizationSettings,
+    SoftSilhouetteShader,
+    TexturesVertex,
+    blending,
+    look_at_view_transform,
+)
+
 
 def image2vid(images, vid_path):
 

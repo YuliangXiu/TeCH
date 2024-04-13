@@ -8,6 +8,11 @@ only support crop to squared images
 """
 import torch
 
+from kornia.geometry.transform.imgwarp import (
+    get_perspective_transform,
+    warp_affine,
+)
+
 
 def points2bbox(points, points_scale=None):
     if points_scale:
