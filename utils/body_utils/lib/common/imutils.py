@@ -128,12 +128,13 @@ def remove_floats(mask):
     return new_mask
 
 
-def process_image(img_file, hps_type, single, input_res, detector, modnet):
+def process_image(img_file, input_res, detector, modnet):
 
     img_raw, (in_height, in_width) = load_img(img_file)
     tgt_res = input_res * 2
-    while tgt_res < in_height or tgt_res < in_width:
-        tgt_res += input_res
+    # while tgt_res < in_height or tgt_res < in_width:
+    #     tgt_res += input_res
+
     M_square = get_affine_matrix_wh(in_width, in_height, tgt_res, tgt_res)
     img_square = warp_affine(
         img_raw,
@@ -143,18 +144,20 @@ def process_image(img_file, hps_type, single, input_res, detector, modnet):
         align_corners=True
     )
 
-    # detection for bbox
-    predictions = detector(img_square / 255.)[0]
+    if detector is not None:
 
-    if single:
+        # detection for bbox
+        predictions = detector(img_square / 255.)[0]
         top_score = predictions["scores"][predictions["labels"] == 1].max()
         human_ids = torch.where(predictions["scores"] == top_score)[0]
-    else:
-        human_ids = torch.logical_and(predictions["labels"] == 1, predictions["scores"]
-                                      > 0.9).nonzero().squeeze(1)
 
-    boxes = predictions["boxes"][human_ids, :].detach().cpu().numpy()
-    masks = predictions["masks"][human_ids, :, :].permute(0, 2, 3, 1).detach().cpu().numpy()
+        boxes = predictions["boxes"][human_ids, :].detach().cpu().numpy()
+        masks = predictions["masks"][human_ids, :, :].permute(0, 2, 3, 1).detach().cpu().numpy()
+
+    else:
+
+        boxes = np.array([[0, 0, tgt_res, tgt_res]], dtype=np.float32)
+        masks = [np.zeros((tgt_res, tgt_res), dtype=np.float32)[..., None]]
 
     M_crop = get_affine_matrix_box(boxes, input_res, input_res)
     M_crop_tgt_res = get_affine_matrix_box(boxes, tgt_res, tgt_res)

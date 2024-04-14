@@ -231,7 +231,7 @@ class Mesh():
         ) if normals is not None else None
 
         if keypoints_path is not None:
-            mesh.keypoints = np.load(keypoints_path, allow_pickle=True).item()['joints'].to(device)
+            mesh.keypoints = np.load(keypoints_path, allow_pickle=True).item()['smpl_joints'].to(device)
             if len(mesh.keypoints.shape) == 2:
                 mesh.keypoints = mesh.keypoints[None]
         elif len(mesh.v) == 6890:    # SMPL mesh init

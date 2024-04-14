@@ -2,7 +2,7 @@ __pycache__
 data/*
 clip_ckpts
 results
-logs
+logs/
 .DS_Store
 *.o
 *.so
@@ -16,5 +16,7 @@ cores/lib/gridencoder/build
 cores/lib/freqencoder/dist
 cores/lib/gridencoder/dist
 examples/
+tmp/
 OPENAI_API_KEY
+
 

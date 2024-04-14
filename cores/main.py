@@ -37,6 +37,8 @@ if __name__ == '__main__':
     cfg.workspace = os.path.join(opt.exp_dir, cfg.stage)
     cfg.exp_root = opt.exp_dir
     cfg.sub_name = opt.sub_name
+    
+    
     if cfg.data.load_input_image:
         cfg.data.img = os.path.join(opt.exp_dir, 'png', "{}_crop.png".format(opt.sub_name))
     if cfg.data.load_front_normal:

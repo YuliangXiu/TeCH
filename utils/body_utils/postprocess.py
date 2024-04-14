@@ -21,6 +21,7 @@ parser.add_argument("-d", "--dir", type=str, default="exp/demo/teaser/obj/")
 parser.add_argument("-n", "--name", type=str, default="")
 parser.add_argument("-g", "--gpu", type=int, default=0)
 parser.add_argument("-t", "--type", type=str, default="smplx")
+parser.add_argument("-s", "--gender", type=str, default="male")
 parser.add_argument("-f", "--face", action='store_true', default=False)
 args = parser.parse_args()
 
@@ -33,27 +34,46 @@ tech_path = f"{prefix}_geometry.obj"
 
 smplx_param = np.load(smpl_path, allow_pickle=True).item()
 tech_obj = trimesh.load(tech_path)
-tech_obj.vertices *= np.array([1.0, -1.0, -1.0])
+# tech_obj.vertices *= np.array([1.0, -1.0, -1.0])
 tech_obj.vertices /= smplx_param["scale"].cpu().numpy()
 tech_obj.vertices -= smplx_param["transl"].cpu().numpy()
 
 for key in smplx_param.keys():
     smplx_param[key] = smplx_param[key].to(device).view(1, -1)
 
-smpl_model = smplx.create(
-    smplx_container.model_dir,
-    model_type=args.type,
-    gender="neutral",
-    age="adult",
-    use_face_contour=False,
-    use_pca=False,
-    num_betas=200,
-    num_expression_coeffs=50,
-    flat_hand_mean=True,
-    ext='pkl'
-).to(device)
-
 smpl_out_lst = []
+
+if "fitting" not in args.dir:
+
+    smpl_model = smplx.create(
+        smplx_container.model_dir,
+        model_type=args.type,
+        gender="neutral",
+        age="adult",
+        use_face_contour=False,
+        use_pca=False,
+        num_betas=200,
+        num_expression_coeffs=50,
+        flat_hand_mean=True,
+        ext='pkl'
+    ).to(device)
+
+else:
+
+    gender = "male" if args.gender == 'man' else "female"
+
+    smpl_model = smplx.create(
+        smplx_container.model_dir,
+        model_type=args.type,
+        gender=gender,
+        age="adult",
+        use_face_contour=False,
+        use_pca=True,
+        num_betas=10,
+        num_expression_coeffs=10,
+        flat_hand_mean=False,
+        ext='pkl'
+    ).to(device)
 
 for pose_type in ["t-pose", "da-pose", "pose", "a-pose"]:
     smpl_out_lst.append(
@@ -90,7 +110,7 @@ if True:    #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix
     tech_obj_cp = tech_obj.copy()
     tech_obj_cp.vertices += smplx_param["transl"].cpu().numpy()
     tech_obj_cp.vertices *= smplx_param["scale"].cpu().numpy()
-    tech_obj_cp.vertices *= np.array([1.0, -1.0, -1.0])
+    # tech_obj_cp.vertices *= np.array([1.0, -1.0, -1.0])
     with open('data/body_data/smplx_vert_segmentation.json') as f:
         smplx_vert_seg = json.load(f)
     seg_labels = list(smplx_vert_seg.keys())
@@ -295,7 +315,7 @@ tech_pose = trimesh.Trimesh(posed_tech_verts.detach(), tech_da.faces)
 smplx_param = np.load(smpl_path, allow_pickle=True).item()
 tech_pose.vertices += smplx_param["transl"].cpu().numpy()
 tech_pose.vertices *= smplx_param["scale"].cpu().numpy()
-tech_pose.vertices *= np.array([1.0, -1.0, -1.0])
+# tech_pose.vertices *= np.array([1.0, -1.0, -1.0])
 tech_pose.export(f"{prefix}_pose.obj")
 
 new_pose = smpl_out_lst[3].full_pose
@@ -316,5 +336,5 @@ tech_pose = trimesh.Trimesh(posed_tech_verts.detach(), tech_da.faces)
 smplx_param = np.load(smpl_path, allow_pickle=True).item()
 tech_pose.vertices += smplx_param["transl"].cpu().numpy()
 tech_pose.vertices *= smplx_param["scale"].cpu().numpy()
-tech_pose.vertices *= np.array([1.0, 1.0, 1.0])
+# tech_pose.vertices *= np.array([1.0, 1.0, 1.0])
 tech_pose.export(f"{prefix}_apose.obj")

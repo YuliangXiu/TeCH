@@ -1155,6 +1155,12 @@ class Trainer(object):
 
         with torch.no_grad():
             self.local_step = 0
+            
+            save_geo_lst = []
+
+            save_path_geo = os.path.join(self.workspace, 'validation', f'{name}_geo.png')
+
+            os.makedirs(os.path.dirname(save_path_geo), exist_ok=True)
 
             for data in loader:
                 self.local_step += 1
@@ -1192,20 +1198,6 @@ class Trainer(object):
                 # only rank = 0 will perform evaluation.
                 if self.local_rank == 0:
 
-                    # save image
-                    save_path = os.path.join(
-                        self.workspace, 'validation', f'{name}_{self.local_step:04d}_rgb.png'
-                    )
-                    save_path_normal = os.path.join(
-                        self.workspace, 'validation', f'{name}_{self.local_step:04d}_normal.png'
-                    )
-                    save_path_depth = os.path.join(
-                        self.workspace, 'validation', f'{name}_{self.local_step:04d}_depth.png'
-                    )
-
-                    #self.log(f"==> Saving validation image to {save_path}")
-                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
                     pred = preds[0].detach().cpu().numpy()
                     pred = (pred * 255).astype(np.uint8)
 
@@ -1216,13 +1208,13 @@ class Trainer(object):
 
                     pred_normal = preds_normal[0].detach().cpu().numpy()
                     pred_normal = (pred_normal * 255).astype(np.uint8)
-
-                    cv2.imwrite(save_path, cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
-                    cv2.imwrite(save_path_depth, pred_depth)
-                    cv2.imwrite(save_path_normal, cv2.cvtColor(pred_normal, cv2.COLOR_RGB2BGR))
+                    
+                    save_geo_lst.append(cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
 
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                     pbar.update(loader.batch_size)
+                    
+            cv2.imwrite(save_path_geo, np.concatenate(save_geo_lst, 1))
 
         average_loss = total_loss / self.local_step
         self.stats["valid_loss"].append(average_loss)
