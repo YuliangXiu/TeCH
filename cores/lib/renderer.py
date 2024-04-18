@@ -1,4 +1,5 @@
 import os
+import os.path as osp
 import random
 
 import numpy as np
@@ -140,9 +141,16 @@ class Renderer(nn.Module):
                 num_subdiv=cfg.model.tet_num_subdiv
             )
             if self.cfg.train.init_mesh and not self.cfg.test.test:
-                self.dmtet_network.init_mesh(
-                    self.mesh.v, self.mesh.f, self.cfg.train.init_mesh_padding
-                )
+                
+                init_dmtet_path = osp.join(cfg.workspace, 'tet/init_mesh.pth')
+                if not osp.exists(init_dmtet_path):
+                    self.dmtet_network.init_mesh(
+                        self.mesh.v, self.mesh.f, self.cfg.train.init_mesh_padding
+                    )
+                    torch.save(self.dmtet_network.state_dict(), init_dmtet_path)
+                else:
+                    self.dmtet_network.load_state_dict(torch.load(init_dmtet_path))
+                    print(f'[INFO] Initialize DMTet with cached init_mesh.pth...')
         else:
             self.mesh = Mesh.load_obj(
                 self.cfg.data.last_model,

@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 
 from transformers import (
-    SegformerFeatureExtractor,
+    SegformerImageProcessor,
     SegformerForSemanticSegmentation,
     AutoProcessor,
     BlipForQuestionAnswering,
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     model = SegformerForSemanticSegmentation.from_pretrained(
         "matei-dorian/segformer-b5-finetuned-human-parsing"
     ).cuda()
-    feature_extractor = SegformerFeatureExtractor.from_pretrained(
+    feature_extractor = SegformerImageProcessor.from_pretrained(
         "matei-dorian/segformer-b5-finetuned-human-parsing"
     )
     prompt, gender = get_prompt_segments(opt.img_path, feature_extractor, model)

@@ -3,10 +3,15 @@ import argparse
 import os
 
 import torch
+import logging
 from lib.provider import ViewDataset
 from lib.renderer import Renderer
 from lib.trainer import *
 from yacs.config import CfgNode as CN
+
+torch.set_float32_matmul_precision('high')
+torch._dynamo.config.verbose = False
+logging.getLogger("torch._dynamo").setLevel(logging.CRITICAL)
 
 
 def load_config(path, default_path=None):

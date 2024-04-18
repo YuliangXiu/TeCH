@@ -1194,3 +1194,7 @@ if __name__ == "__main__":
         )
 
     pipe.save_pretrained(args.dump_path)
+    
+    if os.path.exists(os.path.join(args.dump_path, "model_index.json")):
+        import shutil
+        shutil.rmtree(os.path.join(args.dump_path, "../ldm"))
