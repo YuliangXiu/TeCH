@@ -16,8 +16,10 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 source /home/yxiu/miniconda3/bin/activate TeCH
 
-# Step 2: Get BLIP prompt and gender, you can also use your own prompt
-python utils/get_prompt_blip.py --img-path ${EXP_DIR}/png/${SUBJECT_NAME}_crop.png --out-path ${EXP_DIR}/prompt.txt
+if ! [ -f $EXP_DIR/prompt.txt ]; then
+    # Step 2: Get BLIP prompt and gender, you can also use your own prompt
+    python utils/get_prompt_blip.py --img-path ${EXP_DIR}/png/${SUBJECT_NAME}_crop.png --out-path ${EXP_DIR}/prompt.txt
+fi
 
 export PROMPT=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f1)
 export GENDER=$(cat ${EXP_DIR}/prompt.txt | cut -d'|' -f2)

@@ -1,27 +1,15 @@
 {
     "favorites.resources": [
         {
-            "filePath": "results/fitting/00145/outfit1/vis/07_C_smpl_overlap.png",
+            "filePath": "results/PuzzleIOI/fitting/03632/outfit05",
             "group": "Default"
         },
         {
-            "filePath": "results/fitting/03603/outfit15/vis/07_C_smpl_overlap.png",
+            "filePath": "results/tech/PuzzleIOI/fitting/03590/outfit16/texture",
             "group": "Default"
         },
         {
-            "filePath": "results/fitting/03603/outfit11/vis/07_C_smpl_overlap.png",
-            "group": "Default"
-        },
-        {
-            "filePath": "results/fitting/03603/outfit11/geometry/validation",
-            "group": "Default"
-        },
-        {
-            "filePath": "results/fitting/03603/outfit11/obj",
-            "group": "Default"
-        },
-        {
-            "filePath": "results/fitting/03603/outfit11/texture/validation",
+            "filePath": "results/tech/PuzzleIOI/fitting/03617/outfit05/texture/visualize",
             "group": "Default"
         }
     ]

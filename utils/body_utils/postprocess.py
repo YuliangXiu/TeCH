@@ -265,8 +265,8 @@ if True:    #not osp.exists(f"{prefix}_tech_da.obj") or not osp.exists(f"{prefix
     tech_da = poisson(tech_da, f"{prefix}_tech_da.obj", depth=10)
 
 else:
-    tech_da = trimesh.load(f"{prefix}_tech_da.obj", maintain_orders=True, process=False)
-    smpl_da = trimesh.load(f"{prefix}_smpl_da.obj", maintain_orders=True, process=False)
+    tech_da = trimesh.load(f"{prefix}_tech_da.obj", maintain_order=True, process=False)
+    smpl_da = trimesh.load(f"{prefix}_smpl_da.obj", maintain_order=True, process=False)
 
 smpl_tree = cKDTree(smpl_da.vertices)
 dist, idx = smpl_tree.query(tech_da.vertices, k=5)

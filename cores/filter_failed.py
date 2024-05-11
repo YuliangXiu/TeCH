@@ -3,7 +3,7 @@ from glob import glob
 import numpy as np
 
 subjects = np.loadtxt("all_subjects.txt", dtype=str, delimiter=" ")[:, 0]
-subjects = [f"./results/{outfit}/" for outfit in subjects]
+subjects = [f"./results/tech/{outfit}/" for outfit in subjects]
 
 failed_econ = []
 failed_blip = []
@@ -14,7 +14,7 @@ def lst_to_file (lst, filename):
     
     with open(filename, "w") as f:
         for item in lst:
-            item = item.replace("./results/","")
+            item = item.replace("./results/tech/","")
             subject, outfit = item.split('/')[-3:-1]
             f.write(f"{item[:-1]} {subject} {outfit}\n")
 
@@ -24,7 +24,6 @@ for subject in subjects:
     else:
         if not os.path.exists(os.path.join(subject, "prompt.txt")):
             failed_blip.append(subject)
-            print(subject)
             
     if not os.path.exists(os.path.join(subject, "sd_model/model_index.json")):
         failed_sd.append(subject)

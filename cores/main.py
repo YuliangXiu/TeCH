@@ -1,6 +1,7 @@
 #import nvdiffrast.torch as dr
 import argparse
 import os
+import numpy as np
 
 import torch
 import logging
@@ -42,8 +43,7 @@ if __name__ == '__main__':
     cfg.workspace = os.path.join(opt.exp_dir, cfg.stage)
     cfg.exp_root = opt.exp_dir
     cfg.sub_name = opt.sub_name
-    
-    
+
     if cfg.data.load_input_image:
         cfg.data.img = os.path.join(opt.exp_dir, 'png', "{}_crop.png".format(opt.sub_name))
     if cfg.data.load_front_normal:
@@ -69,10 +69,6 @@ if __name__ == '__main__':
         cfg.data.can_pose_folder = os.path.join(
             opt.exp_dir, 'obj', "{}_apose.obj".format(opt.sub_name)
         )
-    if cfg.data.load_apose_mesh:
-        cfg.data.can_pose_folder = os.path.join(
-            opt.exp_dir, 'obj', "{}_apose.obj".format(opt.sub_name)
-        )
     if cfg.data.load_occ_mask:
         cfg.data.occ_mask = os.path.join(opt.exp_dir, 'png', "{}_occ_mask.png".format(opt.sub_name))
     if cfg.data.load_da_pose_mesh:
@@ -85,10 +81,15 @@ if __name__ == '__main__':
         with open(os.path.join(opt.exp_dir, 'prompt.txt'), 'r') as f:
             cfg.guidance.text = f.readlines()[0].split('|')[0]
 
-    # print(cfg)
+    if cfg.test.test:
+
+        cfg.model.mesh_scale = 1.0 / np.load(
+            os.path.join(opt.exp_dir, 'obj', "{}_smpl.npy".format(opt.sub_name)), allow_pickle=True
+        ).item()['scale'].item()
 
     seed_everything(opt.seed)
     model = Renderer(cfg)
+
     if model.keypoints is not None:
         if len(model.keypoints[0]) == 1:
             cfg.train.head_position = model.keypoints[0][0].cpu().numpy().tolist()
@@ -96,11 +97,18 @@ if __name__ == '__main__':
             cfg.train.head_position = model.keypoints[0][15].cpu().numpy().tolist()
     else:
         cfg.train.head_position = np.array([0., 0.4, 0.], dtype=np.float32).tolist()
+
     cfg.train.canpose_head_position = np.array([0., 0.4, 0.], dtype=np.float32).tolist()
+
+    cfg.train.head_position = [item * cfg.model.mesh_scale for item in cfg.train.head_position]
+    cfg.train.canpose_head_position = [
+        item * cfg.model.mesh_scale for item in cfg.train.canpose_head_position
+    ]
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     if cfg.test.test:
+
         guidance = None    # no need to load guidance model at test
         trainer = Trainer(
             'df',

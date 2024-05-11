@@ -7,7 +7,7 @@ model:
     tet_grid_volume: 5e-8
     tet_num_subdiv: 1
     render_ssaa: 4
-    use_can_pose_space: True
+    use_can_pose_space: true
 train:
     lock_geo: True
     iters: 7000
@@ -18,10 +18,10 @@ train:
     phi_diff: 30
     face_sample_ratio: 0.3
     face_height_range: [0., 0.]
-    face_radius_range: [0.3, 0.4]
+    face_radius_range: [0.5, 0.4]
     face_phi_diff: 30
     face_theta_range: [90, 90]
-    face_phi_range: [-90, 90]
+    face_phi_range: [-180, 180]
     lambda_lap: 0.
     lambda_sil: 0.
     lambda_normal: 0.
@@ -30,15 +30,19 @@ train:
     color_chamfer_step: 5000
     crop_for_lpips: true
 test:
-    save_mesh: true
+    save_mesh: false
     save_uv: true
-    test: False
+    not_test_video: false
+    write_image: true
+    test: true
 data:
     load_input_image: True
     load_front_normal: True
     load_back_normal: True
     load_result_mesh: True
-    load_apose_mesh: True
+    load_apose_mesh: true
+    load_keypoints: false
+
 guidance:
     use_view_prompt: True
     guidance_scale: 100.

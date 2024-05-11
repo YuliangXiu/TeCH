@@ -963,47 +963,53 @@ class Trainer(object):
                 pred_norm = preds_norm[0].detach().cpu().numpy()
                 pred_norm = ((pred_norm * preds_alpha + (1 - preds_alpha)) * 255).astype(np.uint8)
 
-                pred_depth = preds_depth[0].detach().cpu().numpy()
-                pred_depth = (pred_depth -
-                              pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
-                pred_depth = (pred_depth * 255).astype(np.uint8)
+                # pred_depth = preds_depth[0].detach().cpu().numpy()
+                # pred_depth = (pred_depth -
+                #               pred_depth.min()) / (pred_depth.max() - pred_depth.min() + 1e-6)
+                # pred_depth = (pred_depth * 255).astype(np.uint8)
                 if self.render_openpose:
 
                     openpose_map = (openpose_map[0].detach().cpu().numpy() * 255).astype(np.uint8)
 
                 if write_video:
                     all_preds.append(pred)
-                    all_preds_depth.append(pred_depth)
+                    # all_preds_depth.append(pred_depth)
                     all_preds_norm.append(pred_norm)
                     if self.render_openpose:
                         all_openpose_map.append(openpose_map)
-                if write_image and i % 10 == 0:
-                    if isinstance(preds_alpha, torch.Tensor):
-                        preds_alpha = preds_alpha[0].detach().cpu().numpy()
-                    preds_alpha = (preds_alpha * 255).astype(np.uint8)
-                    pred = np.concatenate([pred, preds_alpha], axis=-1)
-                    pred_norm = np.concatenate([pred_norm, preds_alpha], axis=-1)
-                    cv2.imwrite(
-                        os.path.join(save_path, f'{name}_{i:04d}_rgb.png'),
-                        cv2.cvtColor(pred, cv2.COLOR_RGBA2BGRA)
-                    )
-                    cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_depth.png'), pred_depth)
-                    cv2.imwrite(
-                        os.path.join(save_path, f'{name}_{i:04d}_norm.png'),
-                        cv2.cvtColor(pred_norm, cv2.COLOR_RGBA2BGRA)
-                    )
+
+                if write_image and len(all_preds) == len(loader):
+
+                    save_path_geo = os.path.join(self.workspace, 'visualize', f'{name}_geo.png')
+                    save_path_tex = os.path.join(self.workspace, 'visualize', f'{name}_tex.png')
+
+                    all_preds_geo = np.concatenate([
+                        np.concatenate(all_preds_norm[::20][:5], axis=1),
+                        np.concatenate(all_preds_norm[::20][5:], axis=1),
+                    ],
+                                                   axis=0)
+
+                    all_preds_tex = np.concatenate([
+                        np.concatenate(all_preds[::20][:5], axis=1),
+                        np.concatenate(all_preds[::20][5:], axis=1),
+                    ],
+                                                   axis=0)
+                    
+                    cv2.imwrite(save_path_tex, cv2.cvtColor(all_preds_tex, cv2.COLOR_RGBA2BGRA))
+                    # cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_depth.png'), pred_depth)
+                    cv2.imwrite(save_path_geo, cv2.cvtColor(all_preds_geo, cv2.COLOR_RGBA2BGRA))
 
                 pbar.update(loader.batch_size)
 
         if write_video:
             all_preds = np.stack(all_preds, axis=0)
-            all_preds_depth = np.stack(all_preds_depth, axis=0)
+            # all_preds_depth = np.stack(all_preds_depth, axis=0)
             all_preds_norm = np.stack(all_preds_norm, axis=0)
             all_preds_full = np.concatenate([
                 np.concatenate([all_preds[:100], all_preds_norm[:100]], axis=2),
                 np.concatenate([all_preds[100:], all_preds_norm[100:]], axis=2),
             ],
-                                            axis=2)
+                                            axis=1)
             if self.cfg.stage == 'texture':
                 imageio.mimwrite(
                     os.path.join(save_path, f'{name}_rgb.mp4'),
@@ -1019,13 +1025,13 @@ class Trainer(object):
                 quality=8,
                 macro_block_size=1
             )
-            imageio.mimwrite(
-                os.path.join(save_path, f'{name}_depth.mp4'),
-                all_preds_depth[:100],
-                fps=25,
-                quality=8,
-                macro_block_size=1
-            )
+            # imageio.mimwrite(
+            #     os.path.join(save_path, f'{name}_depth.mp4'),
+            #     all_preds_depth[:100],
+            #     fps=25,
+            #     quality=8,
+            #     macro_block_size=1
+            # )
             imageio.mimwrite(
                 os.path.join(save_path, f'{name}_norm.mp4'),
                 all_preds_norm[:100],
@@ -1155,7 +1161,7 @@ class Trainer(object):
 
         with torch.no_grad():
             self.local_step = 0
-            
+
             save_geo_lst = []
 
             save_path_geo = os.path.join(self.workspace, 'validation', f'{name}_geo.png')
@@ -1208,12 +1214,12 @@ class Trainer(object):
 
                     pred_normal = preds_normal[0].detach().cpu().numpy()
                     pred_normal = (pred_normal * 255).astype(np.uint8)
-                    
+
                     save_geo_lst.append(cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))
 
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                     pbar.update(loader.batch_size)
-                    
+
             cv2.imwrite(save_path_geo, np.concatenate(save_geo_lst, 1))
 
         average_loss = total_loss / self.local_step

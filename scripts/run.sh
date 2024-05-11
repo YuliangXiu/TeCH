@@ -6,11 +6,11 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$CUDA_HOME_11_0/lib64:$LD_LIBRARY_PATH
 
 export HF_HOME="/is/cluster/yxiu/.cache"
 export PYOPENGL_PLATFORM="egl"
+export PYTORCH_KERNEL_CACHE_PATH="/is/cluster/yxiu/.cache/torch"
 
 export INPUT_FILE=$1
 export EXP_DIR=$2
 export SUBJECT_NAME=$(basename $1/masked/07_C.jpg | cut -d"." -f1)
-# export SUBJECT_NAME=$(basename $1 | cut -d"." -f1)
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
 source /home/yxiu/miniconda3/bin/activate TeCH

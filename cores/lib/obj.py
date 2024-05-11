@@ -248,7 +248,7 @@ class Mesh():
             mesh.keypoints = mesh.ref_v[head_ind].mean(dim=0)[None, None]
         else:
             mesh.keypoints = None
-        print('mesh keypoints', mesh.keypoints.shape)
+        # print('mesh keypoints', mesh.keypoints.shape)
 
         # auto-normalize
         mesh.auto_size()
